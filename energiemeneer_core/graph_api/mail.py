@@ -36,6 +36,7 @@ def stuur_mail(
     bcc: "str | list[str] | None" = None,
     reply_to: "str | list[str] | None" = None,
     opslaan_in_verzonden: bool = True,
+    bijlagen: "list[dict] | None" = None,
 ) -> bool:
     """Verstuur een HTML-e-mail vanaf het ingelogde account.
 
@@ -45,6 +46,19 @@ def stuur_mail(
         body_html: inhoud als HTML.
         cc, bcc, reply_to: optioneel, één adres of een lijst.
         opslaan_in_verzonden: bewaar de mail in "Verzonden items" (standaard).
+        bijlagen: optionele lijst bijlage-dicts. Elke dict:
+
+            * ``naam`` (str) — bestandsnaam;
+            * ``content_type`` (str) — MIME-type, bijv. ``"image/png"``;
+            * ``inhoud`` (bytes) — de ruwe bestand-bytes;
+            * ``inline`` (bool, optioneel) — ``True`` voor een inline-afbeelding
+              die via ``<img src="cid:...">`` in de body wordt getoond;
+            * ``content_id`` (str, verplicht als ``inline``) — de ``cid`` die in
+              de body naar deze afbeelding verwijst.
+
+          Elke bijlage wordt een Graph ``fileAttachment``. Een bijlage zonder
+          ``naam`` of ``inhoud`` wordt overgeslagen (luid gelogd) zodat één
+          kapotte bijlage het versturen nooit blokkeert.
 
     Returns:
         ``True`` als Microsoft de mail heeft geaccepteerd. ``False`` als mail
@@ -80,6 +94,9 @@ def stuur_mail(
     reply_lijst = _als_lijst(reply_to)
     if reply_lijst:
         bericht["replyTo"] = _adres_objecten(reply_lijst)
+    graph_bijlagen = _bijlage_objecten(bijlagen)
+    if graph_bijlagen:
+        bericht["attachments"] = graph_bijlagen
 
     payload = {"message": bericht, "saveToSentItems": opslaan_in_verzonden}
     resp = _client.post("/me/sendMail", json=payload)
@@ -102,6 +119,41 @@ def _als_lijst(adressen: "str | list[str] | None") -> list[str]:
 
 def _adres_objecten(adressen: list[str]) -> list[dict]:
     return [{"emailAddress": {"address": a}} for a in adressen]
+
+
+def _bijlage_objecten(bijlagen: "list[dict] | None") -> list[dict]:
+    """Zet de bijlage-dicts om naar Graph ``fileAttachment``-objecten.
+
+    Een bijlage zonder ``naam`` of ``inhoud`` (of met niet-bytes-inhoud) wordt
+    overgeslagen en luid gelogd — één kapotte bijlage mag het versturen nooit
+    blokkeren. Inline-bijlagen krijgen ``isInline: true`` + ``contentId`` zodat
+    ``<img src="cid:...">`` in de body werkt.
+    """
+    uit: list[dict] = []
+    for b in bijlagen or []:
+        if not isinstance(b, dict):
+            _log.warning("Bijlage overgeslagen: geen dict (%s)", type(b).__name__)
+            continue
+        naam = (b.get("naam") or "").strip()
+        inhoud = b.get("inhoud")
+        if not naam or not isinstance(inhoud, (bytes, bytearray)):
+            _log.warning("Bijlage '%s' overgeslagen: naam of inhoud (bytes) ontbreekt", naam or "?")
+            continue
+        att: dict = {
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            "name": naam,
+            "contentType": b.get("content_type") or "application/octet-stream",
+            "contentBytes": base64.b64encode(bytes(inhoud)).decode("ascii"),
+        }
+        if b.get("inline"):
+            content_id = (b.get("content_id") or "").strip()
+            if not content_id:
+                _log.warning("Inline-bijlage '%s' zonder content_id — als gewone bijlage meegestuurd", naam)
+            else:
+                att["isInline"] = True
+                att["contentId"] = content_id
+        uit.append(att)
+    return uit
 
 
 # ── Lezen (alleen-lezen) ─────────────────────────────────────────────────────

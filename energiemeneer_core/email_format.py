@@ -93,13 +93,12 @@ def _basis(*, titel: str, accent_kleur: str = "#0BBD37") -> tuple[str, str]:
         </table>
       </td></tr>
 """
+    # Slanke footer: de contactgegevens (e-mail, website, telefoon, KvK) staan nu in
+    # de centraal geplakte handtekening vlak hierboven, dus hier alleen nog de
+    # korte copyright-/legenda-regel — geen dubbele website-link meer.
     footer = f"""      <!-- FOOTER -->
-      <tr><td style="padding:24px 32px 32px;background:#fafafa;border-top:1px solid #eeeeee;">
-        <p style="margin:0 0 8px;font-size:12px;color:#888;line-height:1.6;">
-          Vragen? Antwoord direct op deze e-mail of bel ons.<br>
-          <a href="https://www.de-energiemeneer.nl" style="color:#888;text-decoration:none;">de-energiemeneer.nl</a>
-        </p>
-        <p style="margin:0;font-size:11px;color:#bbb;">© De Energiemeneer · Energielabels voor woningen</p>
+      <tr><td style="padding:20px 32px 28px;background:#fafafa;border-top:1px solid #eeeeee;">
+        <p style="margin:0;font-size:11px;color:#bbb;line-height:1.6;">© De Energiemeneer · Energielabels voor woningen</p>
       </td></tr>
     </table>
   </td></tr>

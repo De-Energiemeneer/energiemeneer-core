@@ -68,6 +68,65 @@ def test_stuur_mail_lijsten_en_cc_bcc_replyto(monkeypatch):
     assert calls[0]["json"]["saveToSentItems"] is False
 
 
+def test_stuur_mail_zonder_bijlagen_geen_attachments_veld(monkeypatch):
+    calls = _vang_request(monkeypatch, _resp(status=202))
+    mail.stuur_mail("a@x.nl", "x", "y")
+    assert "attachments" not in calls[0]["json"]["message"]
+
+
+def test_stuur_mail_inline_bijlage(monkeypatch):
+    calls = _vang_request(monkeypatch, _resp(status=202))
+    logo = b"\x89PNG-nep-bytes"
+    ok = mail.stuur_mail(
+        "a@x.nl", "x", '<img src="cid:em-logo">',
+        bijlagen=[{"naam": "logo.png", "content_type": "image/png",
+                   "inhoud": logo, "inline": True, "content_id": "em-logo"}],
+    )
+    assert ok is True
+    att = calls[0]["json"]["message"]["attachments"]
+    assert len(att) == 1
+    assert att[0]["@odata.type"] == "#microsoft.graph.fileAttachment"
+    assert att[0]["name"] == "logo.png"
+    assert att[0]["contentType"] == "image/png"
+    assert att[0]["isInline"] is True
+    assert att[0]["contentId"] == "em-logo"
+    import base64 as _b
+    assert _b.b64decode(att[0]["contentBytes"]) == logo
+
+
+def test_stuur_mail_gewone_bijlage_niet_inline(monkeypatch):
+    calls = _vang_request(monkeypatch, _resp(status=202))
+    mail.stuur_mail("a@x.nl", "x", "y",
+                    bijlagen=[{"naam": "offerte.pdf", "content_type": "application/pdf",
+                               "inhoud": b"%PDF-1.4"}])
+    att = calls[0]["json"]["message"]["attachments"]
+    assert att[0]["name"] == "offerte.pdf"
+    assert "isInline" not in att[0] and "contentId" not in att[0]
+
+
+def test_stuur_mail_slaat_kapotte_bijlage_over_en_verstuurt_toch(monkeypatch):
+    # Een bijlage zonder inhoud/naam mag het versturen nooit blokkeren.
+    calls = _vang_request(monkeypatch, _resp(status=202))
+    ok = mail.stuur_mail(
+        "a@x.nl", "x", "y",
+        bijlagen=[{"naam": "", "inhoud": b"x"},               # geen naam
+                  {"naam": "kapot.png", "inhoud": None},       # geen bytes
+                  {"naam": "goed.png", "content_type": "image/png", "inhoud": b"ok"}],
+    )
+    assert ok is True
+    att = calls[0]["json"]["message"]["attachments"]
+    assert [a["name"] for a in att] == ["goed.png"]
+
+
+def test_stuur_mail_inline_zonder_content_id_wordt_gewone_bijlage(monkeypatch):
+    calls = _vang_request(monkeypatch, _resp(status=202))
+    mail.stuur_mail("a@x.nl", "x", "y",
+                    bijlagen=[{"naam": "logo.png", "inhoud": b"x", "inline": True}])
+    att = calls[0]["json"]["message"]["attachments"]
+    assert att[0]["name"] == "logo.png"
+    assert "isInline" not in att[0]
+
+
 def test_stuur_mail_negeert_lege_adressen_in_lijst(monkeypatch):
     calls = _vang_request(monkeypatch, _resp(status=202))
     mail.stuur_mail(["  ", "a@x.nl", ""], "x", "y")
