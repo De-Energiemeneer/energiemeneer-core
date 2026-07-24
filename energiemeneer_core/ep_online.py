@@ -39,10 +39,20 @@ def zoek_op_vbo(vbo_id: str) -> dict[str, Any] | None:
     return _ep_get(f"/PandEnergielabel/AdresseerbaarObject/{vbo_id}")
 
 
-def zoek_op_adres(postcode: str, huisnummer: int | str) -> dict[str, Any] | None:
+def zoek_op_adres(
+    postcode: str,
+    huisnummer: int | str,
+    huisletter: str | None = None,
+    toevoeging: str | None = None,
+) -> dict[str, Any] | None:
     """Energielabel-status opvragen via postcode + huisnummer.
 
     Postcode wordt eerst genormaliseerd (hoofdletters, geen spaties).
+    ``huisletter`` en ``toevoeging`` zijn optioneel: alleen wanneer gevuld
+    gaan ze mee als de v5-queryparameters ``huisletter`` respectievelijk
+    ``huisnummertoevoeging`` — zonder deze parameters geeft EP-Online bij
+    een sub-adres (bijv. 12A) het record van het basisnummer (12) terug.
+    Leeg/None → parameter wordt niet meegestuurd (gedrag ongewijzigd).
 
     Returns:
         Dict met de EP-Online response of ``None`` als er voor dit adres
@@ -57,10 +67,12 @@ def zoek_op_adres(postcode: str, huisnummer: int | str) -> dict[str, Any] | None
         raise ValueError("Postcode is verplicht")
     if huisnummer is None or str(huisnummer).strip() == "":
         raise ValueError("Huisnummer is verplicht")
-    return _ep_get(
-        "/PandEnergielabel/Adres",
-        params={"postcode": pc, "huisnummer": str(huisnummer)},
-    )
+    params = {"postcode": pc, "huisnummer": str(huisnummer)}
+    if huisletter is not None and str(huisletter).strip():
+        params["huisletter"] = str(huisletter).strip()
+    if toevoeging is not None and str(toevoeging).strip():
+        params["huisnummertoevoeging"] = str(toevoeging).strip()
+    return _ep_get("/PandEnergielabel/Adres", params=params)
 
 
 def _ep_get(path: str, params: dict[str, str] | None = None) -> dict[str, Any] | None:

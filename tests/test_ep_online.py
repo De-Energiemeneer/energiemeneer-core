@@ -50,6 +50,45 @@ def test_zoek_op_adres_normaliseert_postcode(monkeypatch):
     assert calls[0]["params"]["huisnummer"] == "8"
 
 
+def test_zoek_op_adres_stuurt_huisletter_en_toevoeging_mee(monkeypatch):
+    """Sub-adres (12A-2): huisletter én toevoeging gaan als queryparameters mee.
+    Cruciaal: de functieparameter ``toevoeging`` verlaat het pand als de
+    v5-queryparameter ``huisnummertoevoeging`` — een stille naam-verwisseling
+    zou pas in productie opvallen (EP-Online negeert onbekende parameters)."""
+    resp = _resp(json_data={"label": "C"})
+    calls = _capture_get(monkeypatch, resp)
+    r = ep_online.zoek_op_adres("2548BV", 12, huisletter="A", toevoeging="2")
+    assert r == {"label": "C"}
+    assert calls[0]["params"]["huisletter"] == "A"
+    assert calls[0]["params"]["huisnummertoevoeging"] == "2"
+    assert "toevoeging" not in calls[0]["params"]  # NIET onder de functienaam
+    assert calls[0]["params"] == {"postcode": "2548BV", "huisnummer": "12",
+                                  "huisletter": "A", "huisnummertoevoeging": "2"}
+
+
+def test_zoek_op_adres_zonder_subadres_stuurt_exact_de_oude_parameters(monkeypatch):
+    """Bestaande aanroepen (pc + huisnummer) blijven byte-gelijk: géén extra keys."""
+    calls = _capture_get(monkeypatch, _resp(json_data={"label": "B"}))
+    ep_online.zoek_op_adres("2548BV", 8)
+    assert calls[0]["params"] == {"postcode": "2548BV", "huisnummer": "8"}
+
+
+def test_zoek_op_adres_lege_huisletter_of_toevoeging_niet_meegestuurd(monkeypatch):
+    """Leeg, None of alleen-spaties → parameter volledig weglaten."""
+    calls = _capture_get(monkeypatch, _resp(json_data={"label": "B"}))
+    ep_online.zoek_op_adres("2548BV", 8, huisletter="", toevoeging=None)
+    ep_online.zoek_op_adres("2548BV", 8, huisletter="  ", toevoeging="  ")
+    for c in calls:
+        assert c["params"] == {"postcode": "2548BV", "huisnummer": "8"}
+
+
+def test_zoek_op_adres_stript_spaties_om_subadres(monkeypatch):
+    calls = _capture_get(monkeypatch, _resp(json_data={"label": "A"}))
+    ep_online.zoek_op_adres("2548BV", 12, huisletter=" A ", toevoeging=" 2 ")
+    assert calls[0]["params"]["huisletter"] == "A"
+    assert calls[0]["params"]["huisnummertoevoeging"] == "2"
+
+
 def test_404_op_vbo_geeft_none(monkeypatch):
     _capture_get(monkeypatch, _resp(status=404))
     assert ep_online.zoek_op_vbo("vbo-onbekend") is None
