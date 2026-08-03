@@ -241,6 +241,47 @@ def test_zoek_berichten_map_naam_zoekt_in_die_map(monkeypatch):
     assert res[0]["verzonden"] == "2026-07-15T09:12:30Z"
 
 
+def test_zoek_berichten_volgt_paginering(monkeypatch):
+    """Een oudere mail op pagina 2 wordt gevonden zodra max > paginagrootte."""
+    p1 = {"value": [{"id": f"nieuw{i}", "subject": "Iets anders",
+                     "from": {"emailAddress": {"address": "info@x.nl"}},
+                     "toRecipients": [{"emailAddress": {"address": "a@b.nl"}}],
+                     "receivedDateTime": f"2026-08-01T10:{i:02d}:00Z",
+                     "hasAttachments": False} for i in range(3)],
+          "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages?$skiptoken=xyz"}
+    p2 = {"value": [{"id": "oud", "subject": "Opdrachtbevestiging Acaciastraat",
+                     "from": {"emailAddress": {"address": "info@x.nl"}},
+                     "toRecipients": [{"emailAddress": {"address": "klant@voorbeeld.nl"}}],
+                     "receivedDateTime": "2026-06-13T13:05:00Z",
+                     "sentDateTime": "2026-06-13T13:05:00Z", "hasAttachments": False}]}
+
+    calls = []
+    def fake_request(method, url, headers=None, params=None, json=None, data=None, timeout=None):
+        calls.append(url)
+        return _resp(status=200, json_data=(p2 if "skiptoken" in url else p1))
+    monkeypatch.setattr(requests, "request", fake_request)
+
+    res = mail.zoek_berichten(map_naam="sentitems", ontvanger="klant@voorbeeld.nl",
+                              onderwerp_bevat="Opdrachtbevestiging", max=300)
+    assert len(calls) == 2 and "skiptoken" in calls[1]
+    assert [b["id"] for b in res] == ["oud"]
+
+
+def test_haal_bericht_geeft_body(monkeypatch):
+    waarde = {"id": "1", "subject": "Opdrachtbevestiging X",
+              "from": {"emailAddress": {"address": "info@x.nl"}},
+              "toRecipients": [{"emailAddress": {"address": "klant@voorbeeld.nl"}}],
+              "receivedDateTime": "2026-06-13T13:05:01Z",
+              "sentDateTime": "2026-06-13T13:05:00Z", "hasAttachments": False,
+              "body": {"contentType": "HTML", "content": "<p>Beste klant</p>"}}
+    _vang_get_per_url(monkeypatch, {"/me/messages/1": _resp(status=200, json_data=waarde)})
+    b = mail.haal_bericht("1")
+    assert b["body_html"] == "<p>Beste klant</p>" and b["body_tekst"] == "Beste klant"
+    assert b["verzonden"] == "2026-06-13T13:05:00Z"
+    with pytest.raises(ValueError):
+        mail.haal_bericht("")
+
+
 def test_zoek_berichten_ontvanger_filtert_client_side(monkeypatch):
     waarde = {"value": [
         {"id": "goed", "subject": "Opdrachtbevestiging A",

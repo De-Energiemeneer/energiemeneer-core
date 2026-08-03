@@ -184,7 +184,10 @@ def zoek_berichten(
         onderwerp_bevat: alleen mails waarvan het onderwerp deze tekst bevat
             (hoofdletter-ongevoelig).
         alleen_met_bijlagen: alleen mails met minstens één bijlage.
-        max: maximaal aantal mails om op te halen (Graph ``$top``).
+        max: maximaal aantal RUWE berichten dat wordt bekeken. Boven de
+            paginagrootte (100) volgt de functie de Graph-paginering
+            (``@odata.nextLink``) tot dit aantal bereikt is — nodig om ook
+            oudere mails te vinden vóórdat de client-side filters lopen.
         met_body: haal ook de berichttekst op. Voegt per bericht twee velden
             toe: ``body_html`` (de ruwe inhoud zoals Graph die geeft) en
             ``body_tekst`` (platte tekst, HTML-tags gestript) — bedoeld voor
@@ -226,17 +229,33 @@ def zoek_berichten(
     else:
         params["$orderby"] = "receivedDateTime desc"
 
+    # Paginering: Graph geeft per pagina maximaal ~100 berichten betrouwbaar
+    # terug; we volgen @odata.nextLink tot ``max`` RUWE berichten bekeken zijn.
+    # De filters (onderwerp/ontvanger) zijn client-side en gaan dus over de
+    # volledige opgehaalde set — zonder paginering zou een oudere mail buiten
+    # de eerste pagina onvindbaar zijn.
+    maximaal = int(max)
+    params["$top"] = min(maximaal, 100)
     basis = f"/me/mailFolders/{map_naam}/messages" if map_naam else "/me/messages"
-    resp = _client.get(basis, params=params)
-    if resp.status_code != 200:
-        raise RuntimeError(
-            f"Mails lezen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
-        )
+    ruwe: list[dict] = []
+    pad = basis
+    vraag: dict | None = params
+    while pad and len(ruwe) < maximaal:
+        resp = _client.get(pad, params=vraag)
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"Mails lezen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
+            )
+        gegevens = resp.json()
+        ruwe.extend(gegevens.get("value", []))
+        volgende = gegevens.get("@odata.nextLink", "")
+        pad = volgende.split("/v1.0", 1)[1] if "/v1.0" in volgende else ""
+        vraag = None   # de nextLink bevat de query (skiptoken) al
 
     zoek = (onderwerp_bevat or "").lower()
     ontv_zoek = (ontvanger or "").strip().lower()
     berichten = []
-    for m in resp.json().get("value", []):
+    for m in ruwe[:maximaal]:
         onderwerp = m.get("subject", "") or ""
         if zoek and zoek not in onderwerp.lower():
             continue
@@ -244,22 +263,54 @@ def zoek_berichten(
                       for r in (m.get("toRecipients") or [])]
         if ontv_zoek and ontv_zoek not in (a.lower() for a in ontvangers):
             continue
-        bericht = {
-            "id": m.get("id", ""),
-            "onderwerp": onderwerp,
-            "afzender": (m.get("from", {}) or {}).get("emailAddress", {}).get("address", ""),
-            "ontvangers": ontvangers,
-            "ontvangen": m.get("receivedDateTime", ""),
-            "verzonden": m.get("sentDateTime", "") or "",
-            "heeft_bijlagen": bool(m.get("hasAttachments")),
-        }
-        if met_body:
-            inhoud = (m.get("body", {}) or {}).get("content", "") or ""
-            bericht["body_html"] = inhoud
-            bericht["body_tekst"] = _naar_platte_tekst(inhoud)
-        berichten.append(bericht)
+        berichten.append(_bericht_dict(m, met_body))
     berichten.sort(key=lambda b: b.get("ontvangen", ""), reverse=True)
     return berichten
+
+
+def _bericht_dict(m: dict, met_body: bool) -> dict:
+    """Eén Graph-bericht → het vaste resultaat-dict van deze module."""
+    bericht = {
+        "id": m.get("id", ""),
+        "onderwerp": m.get("subject", "") or "",
+        "afzender": (m.get("from", {}) or {}).get("emailAddress", {}).get("address", ""),
+        "ontvangers": [((r.get("emailAddress") or {}).get("address") or "")
+                       for r in (m.get("toRecipients") or [])],
+        "ontvangen": m.get("receivedDateTime", ""),
+        "verzonden": m.get("sentDateTime", "") or "",
+        "heeft_bijlagen": bool(m.get("hasAttachments")),
+    }
+    if met_body:
+        inhoud = (m.get("body", {}) or {}).get("content", "") or ""
+        bericht["body_html"] = inhoud
+        bericht["body_tekst"] = _naar_platte_tekst(inhoud)
+    return bericht
+
+
+def haal_bericht(bericht_id: str, met_body: bool = True) -> dict:
+    """Haal één bericht op (alleen-lezen), met dezelfde velden als
+    :func:`zoek_berichten` — inclusief de body. Bedoeld voor het patroon
+    "licht zoeken (zonder bodies), daarna alleen de match volledig ophalen".
+
+    Args:
+        bericht_id: de Graph-``id`` van het bericht (uit :func:`zoek_berichten`).
+        met_body: haal ook ``body_html``/``body_tekst`` op (standaard).
+
+    Raises:
+        ValueError: geen ``bericht_id``.
+        RuntimeError: Graph geeft een fout.
+    """
+    if not bericht_id:
+        raise ValueError("bericht_id is verplicht")
+    select = "id,subject,from,toRecipients,receivedDateTime,sentDateTime,hasAttachments"
+    if met_body:
+        select += ",body"
+    resp = _client.get(f"/me/messages/{bericht_id}", params={"$select": select})
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"Bericht ophalen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
+        )
+    return _bericht_dict(resp.json(), met_body)
 
 
 def _naar_platte_tekst(html: str) -> str:
