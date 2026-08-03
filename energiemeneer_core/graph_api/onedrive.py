@@ -99,6 +99,51 @@ def web_url(pad: str) -> str:
     return ""
 
 
+def lijst_bestanden(map_pad: str) -> list[dict[str, Any]]:
+    """Som de inhoud van een OneDrive-map op (niet-recursief, alleen-lezen).
+
+    Args:
+        map_pad: volledig mappad t.o.v. de OneDrive-root.
+
+    Returns:
+        Lijst van dicts: ``naam``, ``grootte`` (bytes) en ``is_map`` (bool),
+        voor elk item direct in de map. Volgt Graph-paginering, dus ook
+        mappen met veel bestanden komen compleet terug.
+
+    Raises:
+        ValueError: leeg pad.
+        RuntimeError: map niet gevonden of Graph geeft een fout.
+    """
+    p = (map_pad or "").strip("/")
+    if not p:
+        raise ValueError("map_pad is verplicht")
+
+    items: list[dict[str, Any]] = []
+    pad = f"/me/drive/root:/{p}:/children"
+    params: dict[str, Any] | None = {"$select": "name,size,folder", "$top": 200}
+    while pad:
+        resp = _client.get(pad, params=params)
+        if resp.status_code == 404:
+            raise RuntimeError(f"OneDrive-map niet gevonden: {map_pad}")
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"OneDrive-map lezen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
+            )
+        gegevens = resp.json()
+        for item in gegevens.get("value", []):
+            items.append({
+                "naam": item.get("name", "") or "",
+                "grootte": item.get("size", 0) or 0,
+                "is_map": "folder" in item,
+            })
+        # Volgende pagina: Graph geeft een volledige URL; wij sturen alleen
+        # het pad-deel door (de query met skiptoken zit daarin).
+        volgende = gegevens.get("@odata.nextLink", "")
+        pad = volgende.split("/v1.0", 1)[1] if "/v1.0" in volgende else ""
+        params = None
+    return items
+
+
 def download_bestand(onedrive_pad: str, lokaal_pad: str) -> str:
     """Download een OneDrive-bestand naar een lokaal pad.
 
@@ -157,6 +202,63 @@ def upload_bestand(lokaal_pad: str, onedrive_pad: str) -> dict[str, Any]:
 
     _log.info("Bestand geüpload naar OneDrive: %s (%d bytes)", onedrive_pad, grootte)
     return {"pad": onedrive_pad, "grootte": grootte}
+
+
+def verplaats_item(pad: str, doel_map: str) -> dict[str, Any]:
+    """Verplaats een bestand of map naar een andere OneDrive-map.
+
+    De doelmap (inclusief tussenmappen) wordt aangemaakt als die nog niet
+    bestaat. Bestaat er in de doelmap al een item met dezelfde naam, dan
+    laat OneDrive het verplaatste item automatisch hernoemen (Graph-gedrag:
+    er komt een volgnummer achter de naam).
+
+    Args:
+        pad: volledig pad van het te verplaatsen item t.o.v. de OneDrive-root.
+        doel_map: volledig pad van de map waar het item heen moet.
+
+    Returns:
+        Dict met ``pad`` (het nieuwe volledige pad) en ``naam`` (de
+        uiteindelijke naam — kan afwijken bij een naamsbotsing).
+
+    Raises:
+        ValueError: leeg bron- of doelpad.
+        RuntimeError: item niet gevonden of Graph geeft een fout.
+    """
+    p = (pad or "").strip("/")
+    d = (doel_map or "").strip("/")
+    if not p:
+        raise ValueError("pad is verplicht")
+    if not d:
+        raise ValueError("doel_map is verplicht")
+
+    # Doelmap (met tussenmappen) garanderen — zonder de _1/_2-hernoemlogica
+    # van maak_map: we willen verplaatsen naar precies déze map.
+    huidig = ""
+    for onderdeel in d.split("/"):
+        if not onderdeel.strip():
+            continue
+        parent = huidig or "root"
+        huidig = f"{huidig}/{onderdeel}" if huidig else onderdeel
+        if not _bestaat(huidig):
+            _maak_submap(parent, onderdeel)
+
+    resp = _client.patch(
+        f"/me/drive/root:/{p}",
+        json={
+            "parentReference": {"path": f"/drive/root:/{d}"},
+            "@microsoft.graph.conflictBehavior": "rename",
+        },
+    )
+    if resp.status_code == 404:
+        raise RuntimeError(f"OneDrive-item niet gevonden: {pad}")
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"OneDrive-item verplaatsen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
+        )
+    naam = resp.json().get("name", "") or p.rsplit("/", 1)[-1]
+    nieuw_pad = f"{d}/{naam}"
+    _log.info("OneDrive-item verplaatst: %s → %s", pad, nieuw_pad)
+    return {"pad": nieuw_pad, "naam": naam}
 
 
 # ── Upload-varianten ───────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+import re
 
 from energiemeneer_core import environment
 from energiemeneer_core.graph_api import _client
@@ -166,6 +167,7 @@ def zoek_berichten(
     onderwerp_bevat: str | None = None,
     alleen_met_bijlagen: bool = False,
     max: int = 50,
+    met_body: bool = False,
 ) -> list[dict]:
     """Lees berichten uit de mailbox van het ingelogde account (alleen-lezen).
 
@@ -180,10 +182,15 @@ def zoek_berichten(
             (hoofdletter-ongevoelig).
         alleen_met_bijlagen: alleen mails met minstens één bijlage.
         max: maximaal aantal mails om op te halen (Graph ``$top``).
+        met_body: haal ook de berichttekst op. Voegt per bericht twee velden
+            toe: ``body_html`` (de ruwe inhoud zoals Graph die geeft) en
+            ``body_tekst`` (platte tekst, HTML-tags gestript) — bedoeld voor
+            o.a. het uitlezen van een beveiligingscode uit een mail.
 
     Returns:
         Lijst van dicts: ``id``, ``onderwerp``, ``afzender`` (e-mailadres),
-        ``ontvangen`` (ISO-tijd) en ``heeft_bijlagen`` (bool). Nieuwste eerst.
+        ``ontvangen`` (ISO-tijd) en ``heeft_bijlagen`` (bool); met ``met_body``
+        ook ``body_html`` en ``body_tekst``. Nieuwste eerst.
 
     Raises:
         RuntimeError: Graph geeft een fout.
@@ -195,9 +202,12 @@ def zoek_berichten(
     if alleen_met_bijlagen:
         filters.append("hasAttachments eq true")
 
+    select = "id,subject,from,receivedDateTime,hasAttachments"
+    if met_body:
+        select += ",body"
     params: dict = {
         "$top": int(max),
-        "$select": "id,subject,from,receivedDateTime,hasAttachments",
+        "$select": select,
     }
     if filters:
         # Bij een $filter op 'from' laat Graph geen $orderby op een ander veld
@@ -218,15 +228,26 @@ def zoek_berichten(
         onderwerp = m.get("subject", "") or ""
         if zoek and zoek not in onderwerp.lower():
             continue
-        berichten.append({
+        bericht = {
             "id": m.get("id", ""),
             "onderwerp": onderwerp,
             "afzender": (m.get("from", {}) or {}).get("emailAddress", {}).get("address", ""),
             "ontvangen": m.get("receivedDateTime", ""),
             "heeft_bijlagen": bool(m.get("hasAttachments")),
-        })
+        }
+        if met_body:
+            inhoud = (m.get("body", {}) or {}).get("content", "") or ""
+            bericht["body_html"] = inhoud
+            bericht["body_tekst"] = _naar_platte_tekst(inhoud)
+        berichten.append(bericht)
     berichten.sort(key=lambda b: b.get("ontvangen", ""), reverse=True)
     return berichten
+
+
+def _naar_platte_tekst(html: str) -> str:
+    """Strip HTML-tags en vouw witruimte samen tot één regel platte tekst."""
+    zonder_tags = re.sub(r"<[^>]+>", " ", html or "")
+    return re.sub(r"\s+", " ", zonder_tags).strip()
 
 
 def haal_bijlagen(bericht_id: str) -> list[dict]:

@@ -242,3 +242,33 @@ def test_haal_bijlagen_decodeert_en_slaat_lege_over(monkeypatch):
 def test_haal_bijlagen_eist_id(monkeypatch):
     with pytest.raises(ValueError, match="bericht_id"):
         mail.haal_bijlagen("")
+
+
+def test_zoek_berichten_met_body_geeft_html_en_platte_tekst(monkeypatch):
+    waarde = {"value": [
+        {"id": "1", "subject": "Uw beveiligingscode",
+         "from": {"emailAddress": {"address": "info@energielabelportal.nl"}},
+         "receivedDateTime": "2026-06-01T10:00:00Z", "hasAttachments": False,
+         "body": {"contentType": "html",
+                  "content": "<html><p>Uw   beveiligingscode is\n<b>123456</b>.</p></html>"}},
+    ]}
+    calls = _vang_get_per_url(monkeypatch, {"/me/messages": _resp(status=200, json_data=waarde)})
+    res = mail.zoek_berichten(afzender="info@energielabelportal.nl", met_body=True)
+    assert len(res) == 1
+    assert "<b>123456</b>" in res[0]["body_html"]
+    # Tags gestript, witruimte samengevouwen.
+    assert res[0]["body_tekst"] == "Uw beveiligingscode is 123456 ."
+    # body wordt alleen opgevraagd als erom gevraagd is.
+    assert ",body" in calls[0]["params"]["$select"]
+
+
+def test_zoek_berichten_zonder_body_vraagt_geen_body_op(monkeypatch):
+    waarde = {"value": [
+        {"id": "1", "subject": "X",
+         "from": {"emailAddress": {"address": "a@b.nl"}},
+         "receivedDateTime": "2026-06-01T10:00:00Z", "hasAttachments": False},
+    ]}
+    calls = _vang_get_per_url(monkeypatch, {"/me/messages": _resp(status=200, json_data=waarde)})
+    res = mail.zoek_berichten(afzender="a@b.nl")
+    assert "body" not in calls[0]["params"]["$select"]
+    assert "body_html" not in res[0] and "body_tekst" not in res[0]

@@ -235,3 +235,121 @@ def test_download_bestand_fout(monkeypatch, tmp_path):
     _vang_request(monkeypatch, lambda *a: _resp_content(404, b""))
     with pytest.raises(RuntimeError):
         onedrive.download_bestand("bestaat/niet.pdf", str(tmp_path / "x.pdf"))
+
+
+# ── Mapinhoud opsommen ─────────────────────────────────────────────────────────
+
+
+def test_lijst_bestanden_geeft_naam_grootte_en_mapvlag(monkeypatch):
+    waarde = {"value": [
+        {"name": "foto1.jpg", "size": 1234, "file": {}},
+        {"name": "Submap", "size": 0, "folder": {"childCount": 2}},
+    ]}
+
+    def responder(method, url, json, data):
+        return _resp(status=200, json_data=waarde)
+
+    calls = _vang_request(monkeypatch, responder)
+    res = onedrive.lijst_bestanden("Dossiers/Straat 8")
+    assert res == [
+        {"naam": "foto1.jpg", "grootte": 1234, "is_map": False},
+        {"naam": "Submap", "grootte": 0, "is_map": True},
+    ]
+    assert calls[0]["url"].endswith("/me/drive/root:/Dossiers/Straat 8:/children")
+
+
+def test_lijst_bestanden_volgt_paginering(monkeypatch):
+    pagina1 = {
+        "value": [{"name": "a.pdf", "size": 1, "file": {}}],
+        "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/drive/items/x/children?$skiptoken=abc",
+    }
+    pagina2 = {"value": [{"name": "b.pdf", "size": 2, "file": {}}]}
+
+    def responder(method, url, json, data):
+        return _resp(status=200, json_data=pagina2 if "skiptoken" in url else pagina1)
+
+    _vang_request(monkeypatch, responder)
+    res = onedrive.lijst_bestanden("Map")
+    assert [i["naam"] for i in res] == ["a.pdf", "b.pdf"]
+
+
+def test_lijst_bestanden_map_niet_gevonden(monkeypatch):
+    _vang_request(monkeypatch, lambda m, u, j, d: _resp(status=404))
+    with pytest.raises(RuntimeError, match="niet gevonden"):
+        onedrive.lijst_bestanden("Bestaat/Niet")
+
+
+def test_lijst_bestanden_eist_pad():
+    with pytest.raises(ValueError):
+        onedrive.lijst_bestanden("")
+
+
+# ── Item verplaatsen ───────────────────────────────────────────────────────────
+
+
+def test_verplaats_item_naar_bestaande_doelmap(monkeypatch):
+    def responder(method, url, json, data):
+        if method == "GET":
+            return _resp(status=200)  # doelmap bestaat al
+        if method == "PATCH":
+            return _resp(status=200, json_data={"name": "Straat 8, Delft"})
+        return _resp(status=500)
+
+    calls = _vang_request(monkeypatch, responder)
+    r = onedrive.verplaats_item("Voorbereiding/Straat 8, Delft", "1. Afgerond")
+    assert r == {"pad": "1. Afgerond/Straat 8, Delft", "naam": "Straat 8, Delft"}
+    patch = [c for c in calls if c["method"] == "PATCH"][0]
+    assert patch["url"].endswith("/me/drive/root:/Voorbereiding/Straat 8, Delft")
+    assert patch["json"]["parentReference"]["path"] == "/drive/root:/1. Afgerond"
+    assert patch["json"]["@microsoft.graph.conflictBehavior"] == "rename"
+
+
+def test_verplaats_item_maakt_ontbrekende_doelmap_aan(monkeypatch):
+    def responder(method, url, json, data):
+        if method == "GET":
+            return _resp(status=404)  # doelmap bestaat nog niet
+        if method == "POST":
+            return _resp(status=201, json_data={"id": "F1"})
+        if method == "PATCH":
+            return _resp(status=200, json_data={"name": "Straat 8"})
+        return _resp(status=500)
+
+    calls = _vang_request(monkeypatch, responder)
+    r = onedrive.verplaats_item("Voorbereiding/Straat 8", "Werkmap/1. Afgerond")
+    assert r["pad"] == "Werkmap/1. Afgerond/Straat 8"
+    # Beide segmenten van de doelmap worden aangemaakt.
+    posts = [c for c in calls if c["method"] == "POST"]
+    assert [p["json"]["name"] for p in posts] == ["Werkmap", "1. Afgerond"]
+
+
+def test_verplaats_item_hernoemd_bij_naamsbotsing(monkeypatch):
+    def responder(method, url, json, data):
+        if method == "GET":
+            return _resp(status=200)
+        if method == "PATCH":
+            return _resp(status=200, json_data={"name": "Straat 8 1"})  # OneDrive hernoemt
+        return _resp(status=500)
+
+    _vang_request(monkeypatch, responder)
+    r = onedrive.verplaats_item("Voorbereiding/Straat 8", "Afgerond")
+    assert r == {"pad": "Afgerond/Straat 8 1", "naam": "Straat 8 1"}
+
+
+def test_verplaats_item_bron_niet_gevonden(monkeypatch):
+    def responder(method, url, json, data):
+        if method == "GET":
+            return _resp(status=200)
+        if method == "PATCH":
+            return _resp(status=404)
+        return _resp(status=500)
+
+    _vang_request(monkeypatch, responder)
+    with pytest.raises(RuntimeError, match="niet gevonden"):
+        onedrive.verplaats_item("Weg/Item", "Afgerond")
+
+
+def test_verplaats_item_eist_paden():
+    with pytest.raises(ValueError):
+        onedrive.verplaats_item("", "Afgerond")
+    with pytest.raises(ValueError):
+        onedrive.verplaats_item("Iets", "")
