@@ -170,6 +170,7 @@ def zoek_berichten(
     met_body: bool = False,
     map_naam: str | None = None,
     ontvanger: str | None = None,
+    zoek_query: str | None = None,
 ) -> list[dict]:
     """Lees berichten uit de mailbox van het ingelogde account (alleen-lezen).
 
@@ -198,6 +199,17 @@ def zoek_berichten(
         ontvanger: alleen mails waarvan dit adres bij de ontvangers (Aan)
             staat (hoofdletter-ongevoelig; client-side) — bedoeld om een
             zelf-verstuurde mail in Verzonden items terug te vinden.
+        zoek_query: KQL-zoekopdracht voor Graph ``$search`` (bijv.
+            ``'subject:Opdrachtbevestiging AND to:klant@x.nl'``). Doorzoekt de
+            HELE map via de zoekindex, ongeacht hoe diep de mail zit — dé
+            manier om een oude mail te vinden zonder duizenden berichten te
+            pagineren. Graph-eisen worden hier afgehandeld: header
+            ``ConsistencyLevel: eventual``, geen ``$filter``/``$orderby`` in
+            combinatie met ``$search`` (``afzender``/``alleen_met_bijlagen``
+            worden dan genegeerd), paginagrootte ≤ 25. De resultaten komen op
+            relevantie binnen; deze functie sorteert ze zelf op tijd en de
+            client-side filters (``onderwerp_bevat``/``ontvanger``) blijven
+            gewoon werken als verificatie.
 
     Returns:
         Lijst van dicts: ``id``, ``onderwerp``, ``afzender`` (e-mailadres),
@@ -230,24 +242,35 @@ def zoek_berichten(
         params["$orderby"] = "receivedDateTime desc"
 
     # Paginering: Graph geeft per pagina maximaal ~100 berichten betrouwbaar
-    # terug; we volgen @odata.nextLink tot ``max`` RUWE berichten bekeken zijn.
-    # De filters (onderwerp/ontvanger) zijn client-side en gaan dus over de
-    # volledige opgehaalde set — zonder paginering zou een oudere mail buiten
-    # de eerste pagina onvindbaar zijn.
+    # terug (bij $search maximaal 25); we volgen @odata.nextLink tot ``max``
+    # RUWE berichten bekeken zijn. De filters (onderwerp/ontvanger) zijn
+    # client-side en gaan dus over de volledige opgehaalde set — zonder
+    # paginering zou een oudere mail buiten de eerste pagina onvindbaar zijn.
     maximaal = int(max)
-    params["$top"] = min(maximaal, 100)
+    kop_extra = None
+    if zoek_query:
+        # $search laat geen $filter/$orderby toe en eist ConsistencyLevel.
+        veilige_query = zoek_query.replace('"', " ").strip()
+        params = {"$search": f'"{veilige_query}"',
+                  "$top": min(maximaal, 25), "$select": select}
+        kop_extra = {"ConsistencyLevel": "eventual"}
+    else:
+        params["$top"] = min(maximaal, 100)
     basis = f"/me/mailFolders/{map_naam}/messages" if map_naam else "/me/messages"
     ruwe: list[dict] = []
     pad = basis
     vraag: dict | None = params
     while pad and len(ruwe) < maximaal:
-        resp = _client.get(pad, params=vraag)
+        resp = _client.get(pad, params=vraag, headers_extra=kop_extra)
         if resp.status_code != 200:
             raise RuntimeError(
                 f"Mails lezen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
             )
         gegevens = resp.json()
-        ruwe.extend(gegevens.get("value", []))
+        pagina = gegevens.get("value", [])
+        if not pagina:
+            break   # lege pagina = klaar (sommige $search-antwoorden geven geen nextLink)
+        ruwe.extend(pagina)
         volgende = gegevens.get("@odata.nextLink", "")
         pad = volgende.split("/v1.0", 1)[1] if "/v1.0" in volgende else ""
         vraag = None   # de nextLink bevat de query (skiptoken) al

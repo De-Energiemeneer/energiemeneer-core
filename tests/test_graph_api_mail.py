@@ -267,6 +267,30 @@ def test_zoek_berichten_volgt_paginering(monkeypatch):
     assert [b["id"] for b in res] == ["oud"]
 
 
+def test_zoek_berichten_search_query(monkeypatch):
+    """$search: hele-map-zoekopdracht met ConsistencyLevel, zonder $filter/$orderby."""
+    waarde = {"value": [{"id": "oud", "subject": "Opdrachtbevestiging Energielabel — Ananasstraat 109",
+                         "from": {"emailAddress": {"address": "info@x.nl"}},
+                         "toRecipients": [{"emailAddress": {"address": "ernst@haaksma.eu"}}],
+                         "receivedDateTime": "2026-06-13T13:05:01Z",
+                         "sentDateTime": "2026-06-13T13:05:00Z", "hasAttachments": False}]}
+    calls = []
+    def fake_request(method, url, headers=None, params=None, json=None, data=None, timeout=None):
+        calls.append({"url": url, "params": params, "headers": headers})
+        return _resp(status=200, json_data=waarde)
+    monkeypatch.setattr(requests, "request", fake_request)
+
+    res = mail.zoek_berichten(map_naam="sentitems", afzender="wordt@genegeerd.nl",
+                              zoek_query='subject:Opdrachtbevestiging AND to:ernst@haaksma.eu',
+                              ontvanger="ernst@haaksma.eu", onderwerp_bevat="Opdrachtbevestiging")
+    p = calls[0]["params"]
+    assert p["$search"] == '"subject:Opdrachtbevestiging AND to:ernst@haaksma.eu"'
+    assert "$filter" not in p and "$orderby" not in p and p["$top"] == 25
+    assert calls[0]["headers"].get("ConsistencyLevel") == "eventual"
+    assert "/me/mailFolders/sentitems/messages" in calls[0]["url"]
+    assert [b["id"] for b in res] == ["oud"]
+
+
 def test_haal_bericht_geeft_body(monkeypatch):
     waarde = {"id": "1", "subject": "Opdrachtbevestiging X",
               "from": {"emailAddress": {"address": "info@x.nl"}},
