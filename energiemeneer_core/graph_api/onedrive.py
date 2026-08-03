@@ -144,12 +144,16 @@ def lijst_bestanden(map_pad: str) -> list[dict[str, Any]]:
     return items
 
 
-def download_bestand(onedrive_pad: str, lokaal_pad: str) -> str:
+def download_bestand(onedrive_pad: str, lokaal_pad: str, timeout: int = 15) -> str:
     """Download een OneDrive-bestand naar een lokaal pad.
 
     Args:
         onedrive_pad: volledig pad t.o.v. de OneDrive-root (incl. bestandsnaam).
         lokaal_pad: doelpad op de lokale schijf.
+        timeout: HTTP-time-out in seconden (standaard 15 — gelijk aan de rest
+            van de Graph-client). Grote bestanden (bijv. foto's in een
+            dossiermap) kunnen langer nodig hebben; de aanroeper kan dan een
+            ruimere time-out meegeven.
 
     Returns:
         Het lokale pad waar het bestand is weggeschreven.
@@ -161,7 +165,7 @@ def download_bestand(onedrive_pad: str, lokaal_pad: str) -> str:
     p = (onedrive_pad or "").strip("/")
     if not p:
         raise ValueError("onedrive_pad is verplicht")
-    resp = _client.get(f"/me/drive/root:/{p}:/content")
+    resp = _client.verzoek("GET", f"/me/drive/root:/{p}:/content", timeout=timeout)
     if resp.status_code not in (200, 201):
         raise RuntimeError(
             f"OneDrive-download mislukt ({resp.status_code}) voor {onedrive_pad}"
