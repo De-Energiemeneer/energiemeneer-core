@@ -121,3 +121,7 @@ dmypy.json
 
 # VABI-bron met licentie-exe — niet in git; templates leven als package-data in energiemeneer_core/objectbibliotheken/
 /Objectbibliotheken/
+
+# SSH-deploysleutels horen NOOIT in de repo
+core_deploy
+core_deploy*

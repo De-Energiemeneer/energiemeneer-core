@@ -223,6 +223,40 @@ def test_zoek_berichten_fout(monkeypatch):
         mail.zoek_berichten(afzender="x@rvo.nl")
 
 
+def test_zoek_berichten_map_naam_zoekt_in_die_map(monkeypatch):
+    waarde = {"value": [
+        {"id": "1", "subject": "Opdrachtbevestiging Acaciastraat 192",
+         "from": {"emailAddress": {"address": "info@de-energiemeneer.nl"}},
+         "toRecipients": [{"emailAddress": {"address": "Klant@Voorbeeld.nl"}}],
+         "receivedDateTime": "2026-07-15T09:12:33Z",
+         "sentDateTime": "2026-07-15T09:12:30Z", "hasAttachments": False},
+    ]}
+    calls = _vang_get_per_url(
+        monkeypatch, {"/me/mailFolders/sentitems/messages": _resp(status=200, json_data=waarde)})
+    res = mail.zoek_berichten(map_naam="sentitems", ontvanger="klant@voorbeeld.nl",
+                              onderwerp_bevat="Opdrachtbevestiging")
+    assert "/me/mailFolders/sentitems/messages" in calls[0]["url"]
+    assert [b["id"] for b in res] == ["1"]
+    assert res[0]["ontvangers"] == ["Klant@Voorbeeld.nl"]
+    assert res[0]["verzonden"] == "2026-07-15T09:12:30Z"
+
+
+def test_zoek_berichten_ontvanger_filtert_client_side(monkeypatch):
+    waarde = {"value": [
+        {"id": "goed", "subject": "Opdrachtbevestiging A",
+         "from": {"emailAddress": {"address": "info@de-energiemeneer.nl"}},
+         "toRecipients": [{"emailAddress": {"address": "klant@voorbeeld.nl"}}],
+         "receivedDateTime": "2026-07-15T09:00:00Z", "hasAttachments": False},
+        {"id": "ander", "subject": "Opdrachtbevestiging B",
+         "from": {"emailAddress": {"address": "info@de-energiemeneer.nl"}},
+         "toRecipients": [{"emailAddress": {"address": "iemand@anders.nl"}}],
+         "receivedDateTime": "2026-07-16T09:00:00Z", "hasAttachments": False},
+    ]}
+    _vang_get_per_url(monkeypatch, {"/me/messages": _resp(status=200, json_data=waarde)})
+    res = mail.zoek_berichten(ontvanger="klant@voorbeeld.nl")
+    assert [b["id"] for b in res] == ["goed"]
+
+
 def test_haal_bijlagen_decodeert_en_slaat_lege_over(monkeypatch):
     pdf = b"%PDF-1.4 testinhoud"
     waarde = {"value": [

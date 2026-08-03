@@ -168,12 +168,15 @@ def zoek_berichten(
     alleen_met_bijlagen: bool = False,
     max: int = 50,
     met_body: bool = False,
+    map_naam: str | None = None,
+    ontvanger: str | None = None,
 ) -> list[dict]:
     """Lees berichten uit de mailbox van het ingelogde account (alleen-lezen).
 
     Filtert server-side op ``afzender`` (exacte match op het e-mailadres) en
-    ``alleen_met_bijlagen``. ``onderwerp_bevat`` wordt client-side gefilterd
-    (Graph ``$filter`` ondersteunt geen ``contains`` op ``subject``).
+    ``alleen_met_bijlagen``. ``onderwerp_bevat`` en ``ontvanger`` worden
+    client-side gefilterd (Graph ``$filter`` ondersteunt geen ``contains`` op
+    ``subject`` en geen ``any`` op ``toRecipients``).
 
     Args:
         afzender: alleen mails van dit exacte afzender-adres (hoofdletter-
@@ -186,11 +189,18 @@ def zoek_berichten(
             toe: ``body_html`` (de ruwe inhoud zoals Graph die geeft) en
             ``body_tekst`` (platte tekst, HTML-tags gestript) — bedoeld voor
             o.a. het uitlezen van een beveiligingscode uit een mail.
+        map_naam: beperk het zoeken tot één mailmap — een well-known naam
+            (bijv. ``"sentitems"`` voor Verzonden items) of een map-id.
+            ``None`` = de hele mailbox (bestaand gedrag).
+        ontvanger: alleen mails waarvan dit adres bij de ontvangers (Aan)
+            staat (hoofdletter-ongevoelig; client-side) — bedoeld om een
+            zelf-verstuurde mail in Verzonden items terug te vinden.
 
     Returns:
         Lijst van dicts: ``id``, ``onderwerp``, ``afzender`` (e-mailadres),
-        ``ontvangen`` (ISO-tijd) en ``heeft_bijlagen`` (bool); met ``met_body``
-        ook ``body_html`` en ``body_tekst``. Nieuwste eerst.
+        ``ontvangers`` (lijst Aan-adressen), ``ontvangen`` en ``verzonden``
+        (ISO-tijd) en ``heeft_bijlagen`` (bool); met ``met_body`` ook
+        ``body_html`` en ``body_tekst``. Nieuwste eerst.
 
     Raises:
         RuntimeError: Graph geeft een fout.
@@ -202,7 +212,7 @@ def zoek_berichten(
     if alleen_met_bijlagen:
         filters.append("hasAttachments eq true")
 
-    select = "id,subject,from,receivedDateTime,hasAttachments"
+    select = "id,subject,from,toRecipients,receivedDateTime,sentDateTime,hasAttachments"
     if met_body:
         select += ",body"
     params: dict = {
@@ -216,23 +226,31 @@ def zoek_berichten(
     else:
         params["$orderby"] = "receivedDateTime desc"
 
-    resp = _client.get("/me/messages", params=params)
+    basis = f"/me/mailFolders/{map_naam}/messages" if map_naam else "/me/messages"
+    resp = _client.get(basis, params=params)
     if resp.status_code != 200:
         raise RuntimeError(
             f"Mails lezen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
         )
 
     zoek = (onderwerp_bevat or "").lower()
+    ontv_zoek = (ontvanger or "").strip().lower()
     berichten = []
     for m in resp.json().get("value", []):
         onderwerp = m.get("subject", "") or ""
         if zoek and zoek not in onderwerp.lower():
             continue
+        ontvangers = [((r.get("emailAddress") or {}).get("address") or "")
+                      for r in (m.get("toRecipients") or [])]
+        if ontv_zoek and ontv_zoek not in (a.lower() for a in ontvangers):
+            continue
         bericht = {
             "id": m.get("id", ""),
             "onderwerp": onderwerp,
             "afzender": (m.get("from", {}) or {}).get("emailAddress", {}).get("address", ""),
+            "ontvangers": ontvangers,
             "ontvangen": m.get("receivedDateTime", ""),
+            "verzonden": m.get("sentDateTime", "") or "",
             "heeft_bijlagen": bool(m.get("hasAttachments")),
         }
         if met_body:

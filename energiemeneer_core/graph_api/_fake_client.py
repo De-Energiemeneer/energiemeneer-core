@@ -128,6 +128,9 @@ def _dispatch(m: str, pad: str, json: Any = None, data: Any = None) -> _FakeResp
         return _FakeResponse(200, {"value": []})
     if m == "GET" and pad == "/me/messages":
         return _FakeResponse(200, {"value": [_FAKE_BERICHT]})
+    if m == "GET" and pad.startswith("/me/mailFolders/") and pad.endswith("/messages"):
+        # Map-specifiek zoeken (bijv. Verzonden items) → zelfde fake bericht.
+        return _FakeResponse(200, {"value": [_FAKE_BERICHT]})
 
     # ── Agenda (read) ────────────────────────────────────────────────────────
     if m == "GET" and pad.startswith("/me/calendarView"):
