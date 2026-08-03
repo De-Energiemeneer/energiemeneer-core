@@ -291,6 +291,19 @@ def test_zoek_berichten_search_query(monkeypatch):
     assert [b["id"] for b in res] == ["oud"]
 
 
+def test_zoek_mailmap_id_topniveau_en_inbox(monkeypatch):
+    top = {"value": [{"id": "map-1", "displayName": "Archief"}]}
+    inbox = {"value": [{"id": "map-2", "displayName": "Opdrachtbevestigingen"}]}
+    _vang_get_per_url(monkeypatch, {
+        "/me/mailFolders/inbox/childFolders": _resp(status=200, json_data=inbox),
+        "/me/mailFolders": _resp(status=200, json_data=top),
+    })
+    assert mail.zoek_mailmap_id("opdrachtbevestigingen") == "map-2"
+    assert mail.zoek_mailmap_id("Archief") == "map-1"
+    assert mail.zoek_mailmap_id("Bestaat Niet") == ""
+    assert mail.zoek_mailmap_id("") == ""
+
+
 def test_haal_bericht_geeft_body(monkeypatch):
     waarde = {"id": "1", "subject": "Opdrachtbevestiging X",
               "from": {"emailAddress": {"address": "info@x.nl"}},

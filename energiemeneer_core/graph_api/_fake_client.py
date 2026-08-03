@@ -131,6 +131,9 @@ def _dispatch(m: str, pad: str, json: Any = None, data: Any = None) -> _FakeResp
     if m == "GET" and pad.startswith("/me/mailFolders/") and pad.endswith("/messages"):
         # Map-specifiek zoeken (bijv. Verzonden items) → zelfde fake bericht.
         return _FakeResponse(200, {"value": [_FAKE_BERICHT]})
+    if m == "GET" and (pad == "/me/mailFolders" or pad.endswith("/childFolders")):
+        # Mailmappen opsommen (zoek_mailmap_id) → geen gebruikersmappen in fake.
+        return _FakeResponse(200, {"value": []})
     if m == "GET" and pad.startswith("/me/messages/"):
         # Eén bericht ophalen (haal_bericht) → het fake bericht als object.
         return _FakeResponse(200, dict(_FAKE_BERICHT, body={"contentType": "HTML",

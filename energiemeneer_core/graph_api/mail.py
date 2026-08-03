@@ -342,6 +342,38 @@ def _naar_platte_tekst(html: str) -> str:
     return re.sub(r"\s+", " ", zonder_tags).strip()
 
 
+def zoek_mailmap_id(naam: str) -> str:
+    """Zoek de map-id van een mailmap op weergavenaam (alleen-lezen).
+
+    Kijkt hoofdletter-ongevoelig in de top-niveau-mappen én in de submappen
+    van het Postvak IN — genoeg voor gebruikersmappen zoals
+    "Opdrachtbevestigingen". De id is bruikbaar als ``map_naam`` in
+    :func:`zoek_berichten`.
+
+    Args:
+        naam: de weergavenaam van de map.
+
+    Returns:
+        De Graph-``id`` van de map, of ``""`` als de map niet bestaat.
+
+    Raises:
+        RuntimeError: Graph geeft een fout.
+    """
+    doel = (naam or "").strip().lower()
+    if not doel:
+        return ""
+    for pad in ("/me/mailFolders", "/me/mailFolders/inbox/childFolders"):
+        resp = _client.get(pad, params={"$top": 200, "$select": "id,displayName"})
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"Mailmappen lezen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
+            )
+        for m in resp.json().get("value", []):
+            if (m.get("displayName") or "").strip().lower() == doel:
+                return m.get("id", "") or ""
+    return ""
+
+
 def haal_bijlagen(bericht_id: str) -> list[dict]:
     """Haal de bestandsbijlagen van één bericht op (alleen-lezen).
 
