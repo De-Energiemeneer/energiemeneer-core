@@ -374,6 +374,39 @@ def zoek_mailmap_id(naam: str) -> str:
     return ""
 
 
+def lijst_bijlagen(bericht_id: str) -> list[dict]:
+    """Som de bijlagen van één bericht op ZONDER de inhoud te downloaden
+    (alleen-lezen, licht). Bedoeld om een mail aan zijn bijlage-namen te
+    herkennen (bijv. het vaste opdrachtbevestiging-pakket) zonder megabytes
+    aan contentBytes op te halen — gebruik :func:`haal_bijlagen` als de
+    inhoud zelf nodig is.
+
+    Args:
+        bericht_id: de Graph-``id`` van het bericht.
+
+    Returns:
+        Lijst van dicts: ``naam``, ``content_type`` en ``grootte`` (bytes).
+
+    Raises:
+        ValueError: geen ``bericht_id``.
+        RuntimeError: Graph geeft een fout.
+    """
+    if not bericht_id:
+        raise ValueError("bericht_id is verplicht")
+    resp = _client.get(
+        f"/me/messages/{bericht_id}/attachments",
+        params={"$select": "id,name,contentType,size"},
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"Bijlagen opsommen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
+        )
+    return [{"naam": a.get("name", "") or "",
+             "content_type": a.get("contentType", "") or "",
+             "grootte": a.get("size", 0) or 0}
+            for a in resp.json().get("value", [])]
+
+
 def haal_bijlagen(bericht_id: str) -> list[dict]:
     """Haal de bestandsbijlagen van één bericht op (alleen-lezen).
 

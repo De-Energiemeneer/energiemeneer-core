@@ -291,6 +291,20 @@ def test_zoek_berichten_search_query(monkeypatch):
     assert [b["id"] for b in res] == ["oud"]
 
 
+def test_lijst_bijlagen_licht_zonder_inhoud(monkeypatch):
+    waarde = {"value": [{"id": "a1", "name": "Offerte 200605.pdf",
+                         "contentType": "application/pdf", "size": 12345},
+                        {"id": "a2", "name": "Algemene Voorwaarden.pdf",
+                         "contentType": "application/pdf", "size": 999}]}
+    calls = _vang_get_per_url(monkeypatch, {"/attachments": _resp(status=200, json_data=waarde)})
+    res = mail.lijst_bijlagen("msg-1")
+    assert [b["naam"] for b in res] == ["Offerte 200605.pdf", "Algemene Voorwaarden.pdf"]
+    # Licht: geen contentBytes in de $select.
+    assert "contentBytes" not in calls[0]["params"]["$select"]
+    with pytest.raises(ValueError):
+        mail.lijst_bijlagen("")
+
+
 def test_zoek_mailmap_id_topniveau_en_inbox(monkeypatch):
     top = {"value": [{"id": "map-1", "displayName": "Archief"}]}
     inbox = {"value": [{"id": "map-2", "displayName": "Opdrachtbevestigingen"}]}
