@@ -427,10 +427,13 @@ def haal_bijlagen(bericht_id: str) -> list[dict]:
     if not bericht_id:
         raise ValueError("bericht_id is verplicht")
 
-    resp = _client.get(
-        f"/me/messages/{bericht_id}/attachments",
-        params={"$select": "id,name,contentType,size,contentBytes"},
-    )
+    # GEEN $select: 'contentBytes' bestaat alleen op het subtype
+    # fileAttachment en Graph weigert het veld in een $select op het
+    # attachment-basistype (HTTP 400 'Could not find a property named
+    # contentBytes' — bewezen incident 06-08-2026, waardoor de offerte-
+    # PDF-bewijsroute van de uploadtool nooit heeft gewerkt). Zonder
+    # $select levert Graph bij bestand-bijlagen de inhoud gewoon mee.
+    resp = _client.get(f"/me/messages/{bericht_id}/attachments")
     if resp.status_code != 200:
         raise RuntimeError(
             f"Bijlagen ophalen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"

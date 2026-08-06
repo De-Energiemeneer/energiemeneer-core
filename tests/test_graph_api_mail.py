@@ -370,6 +370,15 @@ def test_haal_bijlagen_eist_id(monkeypatch):
         mail.haal_bijlagen("")
 
 
+def test_haal_bijlagen_stuurt_geen_select(monkeypatch):
+    # Regressie (incident 06-08-2026): '$select=…,contentBytes' gaf altijd
+    # HTTP 400 — 'contentBytes' bestaat alleen op het subtype fileAttachment,
+    # niet op het attachment-basistype. De aanroep mag dus géén $select sturen.
+    calls = _vang_get_per_url(monkeypatch, {"/attachments": _resp(status=200, json_data={"value": []})})
+    mail.haal_bijlagen("msg-1")
+    assert calls and not (calls[0]["params"] or {}).get("$select")
+
+
 def test_zoek_berichten_met_body_geeft_html_en_platte_tekst(monkeypatch):
     waarde = {"value": [
         {"id": "1", "subject": "Uw beveiligingscode",
