@@ -8,7 +8,9 @@ afzender of opmaak ingebakken.
 
 De lees-functies (:func:`zoek_berichten`, :func:`haal_bijlagen`) zijn strikt
 **alleen-lezen** — ze verwijderen, verplaatsen of markeren niets. Bedoeld voor
-o.a. de upload-module (het EP-Online-afschrift ophalen).
+o.a. de upload-module (het EP-Online-afschrift ophalen). Enige uitzondering:
+:func:`verplaats_bericht` verplaatst één bericht bewust naar een andere mailmap
+(bewijskopie-archivering door de aanroeper, op mail-type).
 
 Zie BOUWPLAN.md, Module 6 (onderdeel 2).
 """
@@ -456,3 +458,40 @@ def haal_bijlagen(bericht_id: str) -> list[dict]:
             "inhoud": inhoud,
         })
     return bijlagen
+
+
+def verplaats_bericht(bericht_id: str, doel_map: str) -> str:
+    """Verplaats één bericht naar een andere mailmap.
+
+    Dit is de ENIGE muterende functie aan de leeskant van deze module — de
+    overige lees-functies blijven strikt alleen-lezen. Bedoeld voor het
+    archiveren van een eigen (Bcc-)bewijskopie naar de juiste mailmap direct
+    na het versturen, op basis van het mail-type dat de aanroeper zelf kent.
+
+    Args:
+        bericht_id: de Graph-``id`` van het bericht (uit :func:`zoek_berichten`).
+        doel_map: de doelmap — een map-id (uit :func:`zoek_mailmap_id`) of een
+            well-known naam zoals ``"archive"``.
+
+    Returns:
+        De nieuwe Graph-``id`` van het verplaatste bericht (verplaatsen geeft
+        het bericht een andere id).
+
+    Raises:
+        ValueError: geen ``bericht_id`` of ``doel_map``.
+        RuntimeError: Graph geeft een fout.
+    """
+    if not bericht_id:
+        raise ValueError("bericht_id is verplicht")
+    if not doel_map:
+        raise ValueError("doel_map is verplicht")
+    resp = _client.post(
+        f"/me/messages/{bericht_id}/move", json={"destinationId": doel_map}
+    )
+    if resp.status_code not in (200, 201):
+        raise RuntimeError(
+            f"Bericht verplaatsen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
+        )
+    nieuw = resp.json().get("id", "") or ""
+    _log.info("Bericht %s verplaatst naar map %s", bericht_id, doel_map)
+    return nieuw

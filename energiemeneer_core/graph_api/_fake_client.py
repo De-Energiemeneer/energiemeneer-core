@@ -126,6 +126,9 @@ def _dispatch(m: str, pad: str, json: Any = None, data: Any = None) -> _FakeResp
     # ── Mail (reads) ─────────────────────────────────────────────────────────
     if m == "GET" and pad.endswith("/attachments"):
         return _FakeResponse(200, {"value": []})
+    if m == "POST" and pad.startswith("/me/messages/") and pad.endswith("/move"):
+        _log.info("[FAKE] POST %s — bericht niet echt verplaatst", pad)
+        return _FakeResponse(201, {"id": "fake-verplaatst-1"})
     if m == "GET" and pad == "/me/messages":
         return _FakeResponse(200, {"value": [_FAKE_BERICHT]})
     if m == "GET" and pad.startswith("/me/mailFolders/") and pad.endswith("/messages"):

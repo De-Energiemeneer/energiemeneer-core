@@ -407,3 +407,22 @@ def test_zoek_berichten_zonder_body_vraagt_geen_body_op(monkeypatch):
     res = mail.zoek_berichten(afzender="a@b.nl")
     assert "body" not in calls[0]["params"]["$select"]
     assert "body_html" not in res[0] and "body_tekst" not in res[0]
+
+
+def test_verplaats_bericht_post_naar_move(monkeypatch):
+    calls = _vang_request(monkeypatch, _resp(status=201, json_data={"id": "nieuw-id"}))
+    nieuw = mail.verplaats_bericht("msg-1", "map-ob")
+    assert nieuw == "nieuw-id"
+    assert calls[0]["method"] == "POST"
+    assert "/me/messages/msg-1/move" in calls[0]["url"]
+    assert calls[0]["json"] == {"destinationId": "map-ob"}
+
+
+def test_verplaats_bericht_fout_en_verplichte_velden(monkeypatch):
+    _vang_request(monkeypatch, _resp(status=403, text="Access is denied"))
+    with pytest.raises(RuntimeError, match="403"):
+        mail.verplaats_bericht("msg-1", "map-ob")
+    with pytest.raises(ValueError):
+        mail.verplaats_bericht("", "map-ob")
+    with pytest.raises(ValueError):
+        mail.verplaats_bericht("msg-1", "")
