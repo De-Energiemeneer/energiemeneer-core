@@ -53,11 +53,17 @@ _ENV_NTFY_SERVER = "ENERGIEMENEER_NTFY_SERVER"
 _CLIENT_ID_FALLBACK = "75b57417-b3b0-4d9b-8162-79c36ded82e8"
 _TENANT_ID_FALLBACK = "927d1e4a-d007-430e-9091-bc0c34214e3f"
 
-# Scopes — exact zoals vastgelegd in BOUWPLAN/Meesterbrein H9.2.
-_SCOPE = (
+# Scopes — basis exact zoals vastgelegd in BOUWPLAN/Meesterbrein H9.2.
+# Mail.ReadWrite (16-8): nodig voor /me/messages/{id}/move — het archiveren van
+# de OB-bewijskopie naar de mailmap 'Opdrachtbevestigingen'. Wordt bij het
+# token-verversen met een VANGNET gevraagd: is de permissie (nog) niet
+# toegekend in Entra, dan valt de verversing terug op de basis-scopes zodat
+# de bestaande koppeling nooit breekt (zie _ververs_access_token).
+_SCOPE_BASIS = (
     "Files.ReadWrite Tasks.ReadWrite Notes.ReadWrite "
     "Calendars.ReadWrite Mail.Send offline_access"
 )
+_SCOPE = _SCOPE_BASIS + " Mail.ReadWrite"
 
 # Bestanden in de datamap (via Module 1 storage).
 _TOKEN_BESTAND = "token_persist.json"
@@ -258,17 +264,36 @@ def _ververs_access_token(refresh_token: str) -> str:
     noodmelding verstuurd en een ``RuntimeError`` geworpen. Bij een
     tijdelijke fout volgt alleen een ``RuntimeError`` (geen vals alarm).
     """
-    try:
-        r = requests.post(
+    def _post(scope: str) -> "requests.Response":
+        return requests.post(
             _token_endpoint(),
             data={
                 "grant_type": "refresh_token",
                 "client_id": _client_id(),
                 "refresh_token": refresh_token,
-                "scope": _SCOPE,
+                "scope": scope,
             },
             timeout=15,
         )
+
+    try:
+        r = _post(_SCOPE)
+        if r.status_code != 200:
+            try:
+                fout_vol = r.json().get("error", "")
+            except ValueError:
+                fout_vol = ""
+            if fout_vol in ("invalid_grant", "interaction_required", "invalid_scope"):
+                # Vangnet: de extra scope (Mail.ReadWrite) is mogelijk nog niet
+                # toegekend in Entra. Probeer de basis-scopes — de koppeling
+                # blijft dan gewoon werken; alleen het mail-verplaatsen wacht
+                # op de consent. Faalt de basis óók, dan is de refresh-token
+                # zelf het probleem en volgt het bestaande alarmpad.
+                _log.warning(
+                    "Token verversen met uitgebreide scope geweigerd (%s) — "
+                    "terugval op basis-scopes; ken Mail.ReadWrite toe in Entra "
+                    "voor het archiveren van mail", fout_vol)
+                r = _post(_SCOPE_BASIS)
     except requests.RequestException as e:
         # Tijdelijk netwerkprobleem — geen alarm, gewoon later opnieuw.
         raise RuntimeError(f"Microsoft niet bereikbaar bij verversen: {e}") from e
