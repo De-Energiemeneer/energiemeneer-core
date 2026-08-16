@@ -353,3 +353,23 @@ def test_verplaats_item_eist_paden():
         onedrive.verplaats_item("", "Afgerond")
     with pytest.raises(ValueError):
         onedrive.verplaats_item("Iets", "")
+
+
+def test_verwijder_item_op_id_delete_naar_prullenbak(monkeypatch):
+    calls = _vang_request(monkeypatch, lambda m, url, j, d: _resp(status=204))
+    assert onedrive.verwijder_item_op_id("item-123") is True
+    assert calls[0]["method"] == "DELETE"
+    assert "/me/drive/items/item-123" in calls[0]["url"]
+
+
+def test_verwijder_item_op_id_404_telt_als_gelukt(monkeypatch):
+    _vang_request(monkeypatch, lambda m, url, j, d: _resp(status=404))
+    assert onedrive.verwijder_item_op_id("item-al-weg") is True
+
+
+def test_verwijder_item_op_id_fout_en_verplicht_id(monkeypatch):
+    _vang_request(monkeypatch, lambda m, url, j, d: _resp(status=403, text="Access denied"))
+    with pytest.raises(RuntimeError, match="403"):
+        onedrive.verwijder_item_op_id("item-x")
+    with pytest.raises(ValueError):
+        onedrive.verwijder_item_op_id("")

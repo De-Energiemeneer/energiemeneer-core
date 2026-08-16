@@ -362,3 +362,31 @@ def _maak_submap(parent: str, naam: str) -> None:
 
 def _join(parent: str, naam: str) -> str:
     return naam if parent == "root" else f"{parent}/{naam}"
+
+
+def verwijder_item_op_id(item_id: str) -> bool:
+    """Verplaats één OneDrive-item (bestand of map, incl. inhoud) naar de
+    PRULLENBAK van het account — Graph ``DELETE /me/drive/items/{id}`` is een
+    soft-delete (±30 dagen herstelbaar); permanent wissen kan deze functie
+    bewust niet. Alleen op het stabiele item-ID (K1): nooit op naam of pad
+    zoeken om te verwijderen. Een item dat al weg is (404) telt als gelukt.
+
+    Args:
+        item_id: het Graph-item-ID.
+
+    Returns:
+        True bij succes (of al weg).
+
+    Raises:
+        ValueError: geen ``item_id``.
+        RuntimeError: Graph geeft een onverwachte fout.
+    """
+    if not item_id:
+        raise ValueError("item_id is verplicht")
+    resp = _client.delete(f"/me/drive/items/{item_id}")
+    if resp.status_code in (204, 404):
+        _log.info("OneDrive-item %s naar de prullenbak verplaatst", item_id)
+        return True
+    raise RuntimeError(
+        f"OneDrive-item verwijderen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
+    )
