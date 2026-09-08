@@ -74,9 +74,19 @@ def ontbrekende_velden(adres) -> list[str]:
     return [k for k in FACTUURADRES_VERPLICHT if not str(a.get(k) or "").strip()]
 
 
+def _effectief(klant) -> dict:
+    """Kopie van het klantrecord met de factuuradres-sleutels gegarandeerd
+    aanwezig. Een dict zónder vlag (record van vóór de migratie, of een
+    tijdelijk dict zoals het relatie-pad van de SnelStart-robot) krijgt
+    dezelfde afleiding als ``normaliseer`` — het origineel blijft ongemoeid."""
+    k = dict(klant) if isinstance(klant, dict) else {}
+    if FACTUURADRES_AFWIJKEND not in k:
+        normaliseer(k)
+    return k
+
+
 def is_afwijkend(klant) -> bool:
-    k = klant if isinstance(klant, dict) else {}
-    return naar_bool(k.get(FACTUURADRES_AFWIJKEND))
+    return naar_bool(_effectief(klant).get(FACTUURADRES_AFWIJKEND))
 
 
 def uit_formulier(data) -> tuple[bool | None, dict]:
@@ -148,8 +158,8 @@ def factuuradres_van(klant, woonadres) -> dict:
     (objectadres). Resultaat in objectadres-sleutels plus ``bron``:
     ``"factuuradres"`` of ``"woonadres"``.
     """
-    k = klant if isinstance(klant, dict) else {}
-    if is_afwijkend(k) and heeft_factuuradres(k.get(FACTUURADRES)):
+    k = _effectief(klant)
+    if naar_bool(k.get(FACTUURADRES_AFWIJKEND)) and heeft_factuuradres(k.get(FACTUURADRES)):
         return {**_naar_woonadres_vorm(k.get(FACTUURADRES)), "bron": "factuuradres"}
     w = woonadres if isinstance(woonadres, dict) else {}
     return {"straatnaam": str(w.get("straatnaam") or ""), "huisnummer": str(w.get("huisnummer") or ""),
