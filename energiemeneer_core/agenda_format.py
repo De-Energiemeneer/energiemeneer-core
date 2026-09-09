@@ -1,4 +1,4 @@
-"""De vaste EnergieMeneer-opmaak voor opname-afspraken — het "merk".
+"""De vaste Energiemeneer-opmaak voor opname-afspraken — het "merk".
 
 Bron: ``admin-portal/admin-portal/ms_graph.py`` (``_bouw_event_body``, de
 schoonste opmaak). In de oude tools zat die opmaak vastgebakken in de agenda-

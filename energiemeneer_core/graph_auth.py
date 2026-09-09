@@ -74,7 +74,7 @@ _ALARM_INTERVAL_SEC = 24 * 60 * 60  # max. één noodmelding per 24 uur
 _VERLOOP_MARGE_SEC = 120  # ververs iets vóór het echt verloopt
 
 # Tekst van de noodmelding — bewust zónder klantgegevens.
-_ALARM_TITEL = "EnergieMeneer: Microsoft-inlog nodig"
+_ALARM_TITEL = "Energiemeneer: Microsoft-inlog nodig"
 _ALARM_BERICHT = (
     "Microsoft-koppeling vereist nieuwe inlog — "
     "draai claude in projectmap energiemeneer-core."
