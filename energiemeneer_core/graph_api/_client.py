@@ -59,7 +59,8 @@ def verzoek(
             headers_extra=headers_extra, timeout=timeout,
         )
 
-    url = _GRAPH_BASE + pad
+    # Een volledige URL (bijv. een @odata.nextLink) gaat ongewijzigd door (0.23.1).
+    url = pad if pad.startswith("http") else _GRAPH_BASE + pad
 
     def _doe(token: str) -> requests.Response:
         try:

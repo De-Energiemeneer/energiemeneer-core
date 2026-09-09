@@ -44,36 +44,47 @@ def haal_agenda_op(start_iso: str, eind_iso: str) -> list[dict[str, Any]]:
     if not start_iso or not eind_iso:
         raise ValueError("start_iso en eind_iso zijn verplicht")
 
-    resp = _client.get(
-        "/me/calendarView",
-        params={
-            "startDateTime": start_iso,
-            "endDateTime": eind_iso,
-            "$select": "id,subject,start,end,isAllDay,showAs,location",
-            "$top": 100,
-            "$orderby": "start/dateTime",
-        },
-        # Prefer-header dwingt Graph om in UTC te antwoorden.
-        headers_extra={"Prefer": 'outlook.timezone="UTC"'},
-    )
-    if resp.status_code != 200:
-        raise RuntimeError(
-            f"Agenda ophalen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
-        )
-
+    pad = "/me/calendarView"
+    params = {
+        "startDateTime": start_iso,
+        "endDateTime": eind_iso,
+        "$select": "id,subject,start,end,isAllDay,showAs,location",
+        "$top": 100,
+        "$orderby": "start/dateTime",
+    }
     afspraken = []
-    for ev in resp.json().get("value", []):
-        afspraken.append(
-            {
-                "id": ev.get("id", ""),
-                "onderwerp": ev.get("subject", ""),
-                "start": _naar_utc_iso(ev.get("start", {}).get("dateTime", "")),
-                "eind": _naar_utc_iso(ev.get("end", {}).get("dateTime", "")),
-                "hele_dag": ev.get("isAllDay", False),
-                "status": ev.get("showAs", ""),
-                "locatie": (ev.get("location", {}) or {}).get("displayName", ""),
-            }
+    # Paginering (0.23.1): Graph geeft maximaal $top items per pagina en een
+    # @odata.nextLink voor de rest. Vóór 0.23.1 stopte de lijst bij 100 events,
+    # waardoor een volle agenda valse vrije slots opleverde. Harde bovengrens
+    # tegen een oneindige lus.
+    for _ in range(100):
+        resp = _client.get(
+            pad,
+            params=params,
+            # Prefer-header dwingt Graph om in UTC te antwoorden.
+            headers_extra={"Prefer": 'outlook.timezone="UTC"'},
         )
+        if resp.status_code != 200:
+            raise RuntimeError(
+                f"Agenda ophalen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
+            )
+        data = resp.json()
+        for ev in data.get("value", []):
+            afspraken.append(
+                {
+                    "id": ev.get("id", ""),
+                    "onderwerp": ev.get("subject", ""),
+                    "start": _naar_utc_iso(ev.get("start", {}).get("dateTime", "")),
+                    "eind": _naar_utc_iso(ev.get("end", {}).get("dateTime", "")),
+                    "hele_dag": ev.get("isAllDay", False),
+                    "status": ev.get("showAs", ""),
+                    "locatie": (ev.get("location", {}) or {}).get("displayName", ""),
+                }
+            )
+        volgende = data.get("@odata.nextLink")
+        if not volgende:
+            break
+        pad, params = volgende, None
     return afspraken
 
 
