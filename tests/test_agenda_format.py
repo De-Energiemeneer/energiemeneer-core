@@ -175,3 +175,46 @@ def test_eist_start_en_eind():
 def test_onleesbare_tijd_geeft_duidelijke_fout():
     with pytest.raises(ValueError, match="Onleesbare tijd"):
         agenda_format.opmaak_opname("geen-tijd", "ook-niet", _klant(), _adres())
+
+
+# ── B1 (10-9-2026): titel per product en markering in de body ────────────────
+
+
+def test_zonder_product_blijft_titel_en_markering_energielabel():
+    r = agenda_format.opmaak_opname("2026-06-01T13:30:00Z", "2026-06-01T15:00:00Z", _klant(), _adres())
+    assert r["onderwerp"] == "Jan Jansen: Energielabel opname 120m² tussen 15:30 en 17:00 uur"
+    assert "[Energiemeneer-afspraak]" in r["body_html"]
+    assert agenda_format.product_uit_body(r["body_html"]) == ""
+
+
+def test_product_energielabel_is_byte_gelijk_aan_zonder_product():
+    a = agenda_format.opmaak_opname("2026-06-01T13:30:00Z", "2026-06-01T15:00:00Z", _klant(), _adres())
+    b = agenda_format.opmaak_opname("2026-06-01T13:30:00Z", "2026-06-01T15:00:00Z", _klant(), _adres(),
+                                    product="Energielabel")
+    assert a["onderwerp"] == b["onderwerp"] and a["locatie"] == b["locatie"]
+    assert b["body_html"].replace("[Energiemeneer-afspraak: Energielabel]", "[Energiemeneer-afspraak]") == a["body_html"]
+
+
+def test_vve_scan_titel_en_markering():
+    r = agenda_format.opmaak_opname("2026-06-01T07:00:00Z", "2026-06-01T10:00:00Z", _klant(),
+                                    {"straatnaam": "Sumatrastraat", "huisnummer": 200, "postcode": "2585CR",
+                                     "woonplaats": "Den Haag"}, product="Energiescan VvE")
+    assert r["onderwerp"] == "Jan Jansen: Energiescan VvE bezoek tussen 09:00 en 12:00 uur"
+    assert "[Energiemeneer-afspraak: Energiescan VvE]" in r["body_html"]
+    assert agenda_format.product_uit_body(r["body_html"]) == "Energiescan VvE"
+    assert agenda_format.is_opname(r["onderwerp"], r["body_html"])
+    assert not agenda_format.is_opname(r["onderwerp"])       # oude titelregel alleen kent dit woord niet
+
+
+def test_is_opname_oude_titels_blijven_herkend():
+    assert agenda_format.is_opname("Jan Jansen: Energielabel opname 120m² tussen 15:30 en 17:00 uur")
+    assert agenda_format.is_opname("energielabel OPNAME", "")
+    assert not agenda_format.is_opname("Tandarts", "<p>gewone afspraak</p>")
+    assert agenda_format.is_opname("Tandarts", "<p>[energiemeneer-AFSPRAAK: Energielabel]</p>")
+
+
+def test_onbekend_product_valt_terug_op_energielabel_woord():
+    r = agenda_format.opmaak_opname("2026-06-01T13:30:00Z", "2026-06-01T15:00:00Z", _klant(), _adres(),
+                                    product="Iets nieuws")
+    assert "Energielabel opname" in r["onderwerp"]
+    assert "[Energiemeneer-afspraak]" in r["body_html"]
