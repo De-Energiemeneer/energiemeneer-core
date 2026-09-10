@@ -45,7 +45,7 @@ leidende document; dit is de praktische instap.
 
 | Repo | Rol |
 | --- | --- |
-| **De-Energiemeneer/energiemeneer-core** | De gedeelde library (hier staat deze ONBOARDING.md). Modules 1–8 af, 159/159 tests groen. |
+| **De-Energiemeneer/energiemeneer-core** | De gedeelde library (hier staat deze ONBOARDING.md). Modules 1–10 af (o.a. klant, product, agenda_format), 292 tests groen, laatste tag v0.24.0 (10-9-2026). |
 | **De-Energiemeneer/admin-portal** | Eerste tool die wordt gemigreerd. Draait live op Railway, neemt de core al als dependency. |
 | **De-Energiemeneer/energiemeneer-aanmeldformulier** | Tweede tool, nog te migreren. |
 
