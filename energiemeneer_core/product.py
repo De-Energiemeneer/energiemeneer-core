@@ -43,9 +43,15 @@ class Product:
     ob_automatisch: bool = True    # automaat mag de OB zelf versturen; False = alleen klaarzetten
     woning_eisen: bool = True      # eindcontrole eist woninggegevens (m², bouwjaar, EP); VvE niet
     agenda_titel: str = "Energielabel opname"   # het vaste woord in de agenda-titel ("Naam: <titel> …")
+    # B2-3 (10-9-2026, beslissingen 21-23): de categorie waarvoor de portal de
+    # beschikbaarheid (tijdvakken per weekdag) instelt: "labels" | "adviezen" | "vve".
+    agenda_categorie: str = "labels"
 
 
 ONBEKEND = "Nog te bepalen"
+
+# Beschikbaarheidscategorieën (B2-3): sleutel → label op de Instellingen-pagina.
+AGENDA_CATEGORIEEN = (("labels", "Energielabels"), ("adviezen", "Adviezen particulier"), ("vve", "VvE"))
 
 CATALOGUS: tuple[Product, ...] = (
     Product("Energielabel", "energielabel", "Energielabel", "particulier",
@@ -62,12 +68,12 @@ CATALOGUS: tuple[Product, ...] = (
             automaat=True, offerteregels="woning", bijlage_g=True,
             ob_sjabloon="opdrachtbevestiging_energielabel_advies", afspraak_vereist=True,
             facturatie="robot", dossiertype="particulier", boom="labels", koepel=True,
-            zelf_inplannen=True, duur_minuten=90),
+            zelf_inplannen=True, duur_minuten=90, agenda_categorie="adviezen"),   # beslissing 22
     Product("Maatwerkadvies particulier", "maatwerkadvies", "Maatwerk part.", "particulier",
             automaat=True, offerteregels="woning", bijlage_g=False,
             ob_sjabloon="offerte_maatwerk_particulier", afspraak_vereist=True,
             facturatie="termijnen", dossiertype="particulier", boom="adviezen", koepel=True,
-            zelf_inplannen=True, duur_minuten=120),
+            zelf_inplannen=True, duur_minuten=120, agenda_categorie="adviezen"),
     # B1 (10-9-2026, beslissingen 3, 4, 6, 7): de VvE-scan loopt door de automaat
     # met de VvE-prijstak (vast tarief vanaf 8 woonfuncties), eigen dossiertype,
     # map onder de VvE-basis, eindcontrole zonder woning-eisen maar mét het
@@ -77,13 +83,14 @@ CATALOGUS: tuple[Product, ...] = (
             ob_sjabloon="offerte_energiescan_vve", afspraak_vereist=True,
             facturatie="robot", dossiertype="vve_scan", boom="vve", koepel=False,
             zelf_inplannen=True, duur_minuten=180,
-            ob_automatisch=False, woning_eisen=False, agenda_titel="Energiescan VvE bezoek"),
+            ob_automatisch=False, woning_eisen=False, agenda_titel="Energiescan VvE bezoek",
+            agenda_categorie="vve"),
     Product("Maatwerkadvies VvE", "maatwerkadvies-vve", "Maatwerk VvE", "vve",
             automaat=False, offerteregels="geen", bijlage_g=False,
             ob_sjabloon="offerte_maatwerk_vve", afspraak_vereist=True,
             facturatie="termijnen", dossiertype="vve_maatwerk", boom="vve", koepel=False,
             zelf_inplannen=False, duur_minuten=None,
-            woning_eisen=False, agenda_titel="Maatwerkadvies VvE bezoek"),
+            woning_eisen=False, agenda_titel="Maatwerkadvies VvE bezoek", agenda_categorie="vve"),
     Product(ONBEKEND, "nog-te-bepalen", "Nog te bepalen", "onbekend",
             automaat=False, offerteregels="geen", bijlage_g=False,
             ob_sjabloon="opdrachtbevestiging_generiek", afspraak_vereist=True,
@@ -144,3 +151,8 @@ def namen_met(**eisen) -> tuple[str, ...]:
         if all(getattr(p, veld) == waarde for veld, waarde in eisen.items()):
             uit.append(p.naam)
     return tuple(uit)
+
+
+def agenda_categorie(naam: str | None) -> str:
+    """Beschikbaarheidscategorie van een product (B2-3); onbekend → "labels"."""
+    return profiel(naam).agenda_categorie

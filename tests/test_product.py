@@ -87,3 +87,16 @@ def test_b1_vve_profielvelden_en_agenda_titel():
         p = product.profiel(naam)
         assert p.ob_automatisch and p.woning_eisen and p.agenda_titel == "Energielabel opname", naam
     assert product.namen_met(woning_eisen=False) == ("Energiescan VvE", "Maatwerkadvies VvE")
+
+
+def test_b2_3_agenda_categorie():
+    """B2-3 (10-9-2026, beslissingen 21-23): labels / adviezen / vve; Energielabel
+    Advies hoort bij de adviezen (beslissing 22)."""
+    assert [k for k, _ in product.AGENDA_CATEGORIEEN] == ["labels", "adviezen", "vve"]
+    assert product.agenda_categorie("Energielabel") == "labels"
+    assert product.agenda_categorie("Herlabellen na advies") == "labels"
+    assert product.agenda_categorie("Energielabel Advies") == "adviezen"
+    assert product.agenda_categorie("Maatwerkadvies particulier") == "adviezen"
+    assert product.agenda_categorie("Energiescan VvE") == "vve"
+    assert product.agenda_categorie("Maatwerkadvies VvE") == "vve"
+    assert product.agenda_categorie("bestaat niet") == "labels"
