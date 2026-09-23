@@ -46,7 +46,7 @@ def test_profielen_spiegelen_portalgedrag_9_9_2026():
         "Energielabel", "Maatwerkadvies particulier", "Energielabel Advies"}
     assert product.namen_met(offerteregels="vve") == ("Energiescan VvE",)
     # Bijlage G: alleen de twee labelopnames.
-    assert product.namen_met(bijlage_g=True) == ("Energielabel", "Energielabel Advies")
+    assert product.namen_met(bijlage_g=True) == ("Energielabel", "Energielabel Advies", "Maatwerkadvies particulier")
     # Factuurrobot: hele offerte → factuur; maatwerk = termijnen; onbekend = handmatig.
     assert product.namen_met(facturatie="robot") == (
         "Energielabel", "Herlabellen na advies", "Energielabel Advies", "Energiescan VvE")

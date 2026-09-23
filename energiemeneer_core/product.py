@@ -29,7 +29,7 @@ class Product:
     doelgroep: str             # "particulier" | "vve" | "onbekend"
     automaat: bool             # lead-automaat mag dit product zelfstandig doorlopen
     offerteregels: str         # "woning" (m²-staffel + productartikelen) | "vve" (vast tarief per complex) | "geen"
-    bijlage_g: bool            # Bijlage G mee met de opdrachtbevestiging (labelopname)
+    bijlage_g: bool            # startwaarde: Bijlage G mee met de opdrachtbevestiging (portal-instelling ob_bijlagen gaat voor)
     ob_sjabloon: str           # Mailteksten-template-id voor de opdrachtbevestiging
     afspraak_vereist: bool     # eindcontrole eist een geboekte afspraak vóór de OB
     facturatie: str            # "robot" (hele offerte → factuur) | "termijnen" | "handmatig"
@@ -70,7 +70,7 @@ CATALOGUS: tuple[Product, ...] = (
             facturatie="robot", dossiertype="particulier", boom="labels", koepel=True,
             zelf_inplannen=True, duur_minuten=90, agenda_categorie="adviezen"),   # beslissing 22
     Product("Maatwerkadvies particulier", "maatwerkadvies", "Maatwerk part.", "particulier",
-            automaat=True, offerteregels="woning", bijlage_g=False,
+            automaat=True, offerteregels="woning", bijlage_g=True,     # Kevin 23-9
             ob_sjabloon="offerte_maatwerk_particulier", afspraak_vereist=True,
             facturatie="termijnen", dossiertype="particulier", boom="adviezen", koepel=True,
             zelf_inplannen=True, duur_minuten=120, agenda_categorie="adviezen"),
