@@ -94,7 +94,8 @@ def test_body_bevat_kerngegevens():
     assert "Oppervlakte: 120 m²" in body
     assert "Huidig label: <b>C</b>" in body
     assert "Woningtype: Tussenwoning" in body  # capitalize
-    assert "Prijs: €315" in body
+    # Geen prijs in de agenda (Kevin 23-9-2026): afspraken gaan door naar ZZP'ers.
+    assert "Prijs" not in body and "315" not in body
     assert "Hond aanwezig" in body
 
 

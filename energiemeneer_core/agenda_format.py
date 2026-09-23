@@ -65,7 +65,9 @@ def opmaak_opname(
             ``toevoeging``, ``postcode``, ``woonplaats``, ``oppervlakte``,
             ``bouwjaar`` en optioneel ``label``.
         woningtype: type woning (bijv. ``"Tussenwoning"``).
-        prijs: prijs als tekst of getal (bijv. ``"315"``).
+        prijs: genegeerd (Kevin 23-9-2026): de prijs staat bewust NIET in de
+            agenda-body, want afspraken worden doorgestuurd naar ZZP'ers.
+            Parameter blijft voor bestaande aanroepers.
         label: huidig energielabel; valt terug op ``adres["label"]``.
         makelaar: naam van de makelaar; alleen getoond als ingevuld.
         product: productnaam uit de catalogus (B1). Bepaalt het woord in de
@@ -237,7 +239,6 @@ def _body(
     opp = adres.get("oppervlakte") or "—"
     label_str = label or adres.get("label") or "onbekend"
     woningtype_str = (woningtype or "—").capitalize()
-    prijs_str = f"€{prijs}" if prijs else "—"
 
     makelaar_blok = ""
     if makelaar and makelaar.strip():
@@ -273,7 +274,7 @@ def _body(
         "<br>\n"
         f"Bouwjaar: {_e(bouwjaar)} &nbsp;|&nbsp; Oppervlakte: {_e(opp)} m² "
         f"&nbsp;|&nbsp; Huidig label: <b>{_e(label_str)}</b><br>\n"
-        f"Woningtype: {_e(woningtype_str)} &nbsp;|&nbsp; Prijs: {_e(prijs_str)}"
+        f"Woningtype: {_e(woningtype_str)}"
         f"{makelaar_blok}{bedrijf_blok}{opmerking_blok}{markering_blok}\n"
         "</p>\n"
         "</body></html>"
