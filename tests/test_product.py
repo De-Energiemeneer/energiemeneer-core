@@ -35,13 +35,13 @@ def test_van_slug():
 
 
 def test_profielen_spiegelen_portalgedrag_9_9_2026():
-    # Automaat-scope: de drie woningproducten (9-9) plus sinds B1 de VvE-scan,
-    # die de OB alleen klaarzet (ob_automatisch=False). Offerteregels: woning
+    # Automaat-scope: de drie woningproducten (9-9) plus sinds B1 de VvE-scan;
+    # die verstuurt de OB sinds 29-9-2026 ook automatisch (was: alleen klaarzetten). Offerteregels: woning
     # uit de m²-staffel, vve = vast tarief per complex.
     assert product.namen_met(automaat=True) == (
         "Energielabel", "Energielabel Advies", "Maatwerkadvies particulier", "Energiescan VvE")
     assert product.namen_met(automaat=True, ob_automatisch=True) == (
-        "Energielabel", "Energielabel Advies", "Maatwerkadvies particulier")
+        "Energielabel", "Energielabel Advies", "Maatwerkadvies particulier", "Energiescan VvE")
     assert set(product.namen_met(offerteregels="woning")) == {
         "Energielabel", "Maatwerkadvies particulier", "Energielabel Advies"}
     assert product.namen_met(offerteregels="vve") == ("Energiescan VvE",)
@@ -78,7 +78,7 @@ def test_namen_met_onbekend_veld_is_programmeerfout():
 def test_b1_vve_profielvelden_en_agenda_titel():
     """B1 (10-9-2026): nieuwe velden; woningproducten onveranderd (byte-gelijk)."""
     scan = product.profiel("Energiescan VvE")
-    assert scan.automaat and not scan.ob_automatisch and not scan.woning_eisen
+    assert scan.automaat and scan.ob_automatisch and not scan.woning_eisen
     assert scan.afspraak_vereist and scan.zelf_inplannen and scan.duur_minuten == 180
     assert scan.agenda_titel == "Energiescan VvE bezoek"
     assert product.profiel("Maatwerkadvies VvE").agenda_titel == "Maatwerkadvies VvE bezoek"

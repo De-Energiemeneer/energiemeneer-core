@@ -77,13 +77,14 @@ CATALOGUS: tuple[Product, ...] = (
     # B1 (10-9-2026, beslissingen 3, 4, 6, 7): de VvE-scan loopt door de automaat
     # met de VvE-prijstak (vast tarief vanaf 8 woonfuncties), eigen dossiertype,
     # map onder de VvE-basis, eindcontrole zonder woning-eisen maar mét het
-    # geboekte bezoek (180 min), en de OB wordt eerst alleen klaargezet.
+    # geboekte bezoek (180 min). De OB gaat sinds 29-9-2026 (Kevin) ook
+    # automatisch de deur uit, onder dezelfde poorten als de woningproducten.
     Product("Energiescan VvE", "energiescan-vve", "Scan VvE", "vve",
             automaat=True, offerteregels="vve", bijlage_g=False,
             ob_sjabloon="offerte_energiescan_vve", afspraak_vereist=True,
             facturatie="robot", dossiertype="vve_scan", boom="vve", koepel=False,
             zelf_inplannen=True, duur_minuten=180,
-            ob_automatisch=False, woning_eisen=False, agenda_titel="Energiescan VvE bezoek",
+            ob_automatisch=True, woning_eisen=False, agenda_titel="Energiescan VvE bezoek",
             agenda_categorie="vve"),
     Product("Maatwerkadvies VvE", "maatwerkadvies-vve", "Maatwerk VvE", "vve",
             automaat=False, offerteregels="geen", bijlage_g=False,
