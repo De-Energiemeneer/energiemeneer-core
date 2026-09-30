@@ -8,6 +8,10 @@ Dit zijn **pure functies**: geen verzending, geen Graph, geen token. Je geeft ee
 afspraak-dict (+ portal-URL en intro-tekst), je krijgt ``(onderwerp, html_body)``
 terug. Het versturen zelf doet de Graph-laag.
 
+Sinds 0.29.0 (30-9-2026) hebben de klantmails dezelfde persoonlijke opmaak als
+de opdrachtbevestigingen van de portal (u-vorm, één lichtgroen afspraakkader,
+productnaam, geen gedachtestreepjes); de nieuwsbrief-kaart is weg.
+
 Levert vier mails:
   * :func:`bevestigingsmail`  — direct na inplannen (naar de klant)
   * :func:`wijzigingsmail`    — na wijziging door de klant
@@ -185,108 +189,95 @@ def _knoppen(portal_url: str, token: str, primair: str = "wijzigen") -> str:
 
 
 # ── Hoofdfuncties ────────────────────────────────────────────────────────────
+#
+# Core 0.29.0 (Kevin 30-9-2026): de klantmails hebben dezelfde persoonlijke
+# opmaak als de opdrachtbevestigingen van de portal: "Beste …", u-vorm, één
+# lichtgroen afspraakkader in de huisstijl, geen nieuwsbrief-kaart, de juiste
+# productnaam en geen gedachtestreepjes in onderwerp of tekst. De handtekening
+# plakt de portal eronder. Signaturen ongewijzigd.
+
+_STIJL = ("font-family:Arial,Helvetica,sans-serif;font-size:10pt;color:#222;line-height:1.6;"
+          "max-width:620px;margin:24px auto;padding:0 16px;")
+_KADER = ("font-weight:700;background:#EAF7EE;border-left:4px solid #0BBD37;"
+          "border-radius:6px;padding:10px 12px;")
+_KADER_GRIJS = ("font-weight:700;background:#F4F4F4;border-left:4px solid #BBBBBB;"
+                "border-radius:6px;padding:10px 12px;color:#666;")
+
+
+def _wrap(inner: str) -> str:
+    return f'<!doctype html><html><body style="{_STIJL}">\n{inner}\n</body></html>'
+
+
+def _aanhef(klant: dict[str, Any] | None) -> str:
+    return f"<p>Beste {_klant_naam(klant)},</p>"
+
+
+def _wanneer(periode: dict[str, str]) -> str:
+    """'Maandag 1 juni 2026, van 09:00 tot 10:30 uur'."""
+    van, _, tot = periode["tijd"].partition(" – ")
+    return f"{periode['dag'].capitalize()} {periode['datum']}, van {van} tot {tot} uur"
+
+
+def _gegevens(afspraak: dict[str, Any]) -> str:
+    """Adres en product onder het kader (alleen wat bekend is)."""
+    regels = []
+    adres = _adres_str(afspraak.get("adres"))
+    if adres:
+        regels.append(f"Adres: {adres}")
+    product = (afspraak.get("product") or "").strip()
+    if product:
+        regels.append(f"Product: {product}")
+    return f"<p>{'<br>'.join(regels)}</p>" if regels else ""
+
+
+def _link(portal_url: str, token: str) -> str:
+    base = (portal_url or "").rstrip("/")
+    link = f"{base}/a/{token}"
+    return (f'<p>U kunt de afspraak bekijken, wijzigen of annuleren via '
+            f'<a href="{link}" style="color:#067A24;font-weight:700;">deze link</a>.</p>')
 
 
 def bevestigingsmail(afspraak: dict[str, Any], *, portal_url: str, intro_tekst: str,
                      opdrachtbevestiging_html: str = "") -> tuple[str, str]:
     """E-mail die direct na inplannen naar de klant gaat."""
     periode = _fmt_periode(afspraak["start"], afspraak["end"])
-    naam = _klant_naam(afspraak.get("klant"))
-    head, foot = _basis(titel="Afspraak bevestigd")
-    body = f"""      <!-- BODY -->
-      <tr><td style="padding:36px 32px 8px;">
-        <h1 style="margin:0 0 14px;font-size:24px;font-weight:600;color:#1a1a1a;letter-spacing:-0.2px;">
-          Hallo {naam.split(' ')[0]}, je afspraak staat ingepland
-        </h1>
-        <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">
-          {intro_tekst}
-        </p>
-
-        <!-- Datum-callout -->
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;">
-          <tr>
-            <td style="background:#EAF7EE;border-left:4px solid #0BBD37;border-radius:6px;padding:18px 20px;">
-              <div style="font-size:13px;color:#005a1a;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Wanneer</div>
-              <div style="font-size:18px;font-weight:600;color:#1a1a1a;">{periode['dag'].capitalize()} {periode['datum']}</div>
-              <div style="font-size:14px;color:#444;margin-top:2px;">{periode['tijd']} · {periode['duur']}</div>
-            </td>
-          </tr>
-        </table>
-
-        <!-- Details -->
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#888;margin-bottom:10px;">Afspraakgegevens</div>
-        {_detail_tabel(afspraak, periode)}
-
-        <!-- OPDRACHTBEVESTIGING_BLOK -->
-        {opdrachtbevestiging_html or ''}
-
-        <!-- Actieknoppen -->
-        {_knoppen(portal_url, afspraak['token'], primair='wijzigen')}
-
-        <p style="margin:32px 0 0;font-size:12px;color:#888;line-height:1.6;">
-          Heb je vragen of wil je iets doorgeven over de woning?
-          Antwoord gewoon op deze e-mail.
-        </p>
-      </td></tr>
-"""
-    return f"Afspraak bevestigd — {periode['dag']} {periode['datum']} {periode['tijd']}", head + body + foot
+    wanneer = _wanneer(periode)
+    inner = (_aanhef(afspraak.get("klant"))
+             + (f"<p>{intro_tekst}</p>" if intro_tekst else "")
+             + f'<p style="{_KADER}">{wanneer}</p>'
+             + _gegevens(afspraak)
+             + (opdrachtbevestiging_html or "")
+             + _link(portal_url, afspraak["token"])
+             + "<p>Heeft u vragen of wilt u iets doorgeven over de woning? Antwoord gerust op deze e-mail.</p>")
+    return f"Afspraak bevestigd: {wanneer[0].lower()}{wanneer[1:]}", _wrap(inner)
 
 
 def wijzigingsmail(afspraak: dict[str, Any], *, portal_url: str, intro_tekst: str,
                    opdrachtbevestiging_html: str = "") -> tuple[str, str]:
-    """E-mail na wijziging door klant."""
+    """E-mail na wijziging van de afspraak."""
     periode = _fmt_periode(afspraak["start"], afspraak["end"])
-    naam = _klant_naam(afspraak.get("klant"))
-    head, foot = _basis(titel="Afspraak gewijzigd")
-    body = f"""      <tr><td style="padding:36px 32px 8px;">
-        <h1 style="margin:0 0 14px;font-size:24px;font-weight:600;color:#1a1a1a;">
-          {naam.split(' ')[0]}, je nieuwe afspraak is bevestigd
-        </h1>
-        <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">{intro_tekst}</p>
-
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;">
-          <tr><td style="background:#EAF7EE;border-left:4px solid #0BBD37;border-radius:6px;padding:18px 20px;">
-              <div style="font-size:13px;color:#005a1a;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Nieuwe tijd</div>
-              <div style="font-size:18px;font-weight:600;color:#1a1a1a;">{periode['dag'].capitalize()} {periode['datum']}</div>
-              <div style="font-size:14px;color:#444;margin-top:2px;">{periode['tijd']} · {periode['duur']}</div>
-          </td></tr>
-        </table>
-
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#888;margin-bottom:10px;">Afspraakgegevens</div>
-        {_detail_tabel(afspraak, periode)}
-
-        {opdrachtbevestiging_html or ''}
-
-        {_knoppen(portal_url, afspraak['token'], primair='wijzigen')}
-      </td></tr>
-"""
-    return f"Afspraak gewijzigd — {periode['dag']} {periode['datum']} {periode['tijd']}", head + body + foot
+    wanneer = _wanneer(periode)
+    inner = (_aanhef(afspraak.get("klant"))
+             + (f"<p>{intro_tekst}</p>" if intro_tekst else "")
+             + f'<p style="{_KADER}">Nieuwe afspraak: {wanneer[0].lower()}{wanneer[1:]}</p>'
+             + _gegevens(afspraak)
+             + (opdrachtbevestiging_html or "")
+             + _link(portal_url, afspraak["token"])
+             + "<p>Heeft u vragen, antwoord dan gerust op deze e-mail.</p>")
+    return f"Afspraak gewijzigd: {wanneer[0].lower()}{wanneer[1:]}", _wrap(inner)
 
 
 def annuleringsmail(afspraak: dict[str, Any], *, portal_url: str, intro_tekst: str) -> tuple[str, str]:
-    """E-mail na annulering door klant."""
-    naam = _klant_naam(afspraak.get("klant"))
+    """E-mail na annulering van de afspraak."""
     periode = _fmt_periode(afspraak["start"], afspraak["end"])
-    head, foot = _basis(titel="Afspraak geannuleerd", accent_kleur="#888")
-    body = f"""      <tr><td style="padding:36px 32px 8px;">
-        <h1 style="margin:0 0 14px;font-size:24px;font-weight:600;color:#1a1a1a;">
-          {naam.split(' ')[0]}, je afspraak is geannuleerd
-        </h1>
-        <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#555;">{intro_tekst}</p>
-
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 24px;">
-          <tr><td style="background:#fafafa;border-left:4px solid #ccc;border-radius:6px;padding:18px 20px;">
-              <div style="font-size:13px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Geannuleerd</div>
-              <div style="font-size:16px;color:#666;text-decoration:line-through;">{periode['dag'].capitalize()} {periode['datum']} · {periode['tijd']}</div>
-          </td></tr>
-        </table>
-
-        <p style="margin:24px 0 0;font-size:13px;color:#555;line-height:1.6;">
-          Wil je een nieuwe afspraak inplannen? Antwoord op deze e-mail of bel ons.
-        </p>
-      </td></tr>
-"""
-    return f"Afspraak geannuleerd — {periode['dag']} {periode['datum']}", head + body + foot
+    wanneer = _wanneer(periode)
+    inner = (_aanhef(afspraak.get("klant"))
+             + (f"<p>{intro_tekst}</p>" if intro_tekst else "")
+             + f'<p style="{_KADER_GRIJS}">Geannuleerd: <span style="text-decoration:line-through;">'
+             f'{wanneer[0].lower()}{wanneer[1:]}</span></p>'
+             + _gegevens(afspraak)
+             + "<p>Wilt u een nieuwe afspraak inplannen? Antwoord gerust op deze e-mail of bel mij.</p>")
+    return f"Afspraak geannuleerd: {periode['dag']} {periode['datum']}", _wrap(inner)
 
 
 def admin_notificatie(afspraak: dict[str, Any], soort: str = "nieuw") -> tuple[str, str]:
