@@ -12,7 +12,8 @@ adresgegevens, je krijgt titel + HTML-body + locatie terug. Die geef je door aan
 
 Vaste afspraken (Meesterbrein H9.3): duur 90 minuten, herinnering 60 minuten
 vooraf. De titel toont klantnaam, oppervlakte en de begin-/eindtijd (Amsterdamse
-tijd). De body toont de klant-, adres- en dossiergegevens.
+tijd). De body toont de klant- en dossiergegevens; het adres staat alleen in de
+locatie.
 
 Zie BOUWPLAN.md, Module 7.
 """
@@ -32,10 +33,11 @@ _log = logging.getLogger(__name__)
 DUUR_MINUTEN = 90
 HERINNERING_MINUTEN = 60
 
-# B1 (10-9-2026): vaste markering in de body waaraan de agenda-sync een
-# Energiemeneer-afspraak herkent, los van het woord in de titel (de VvE-scan
-# heet "Energiescan VvE bezoek"). Zichtbare tekst, geen HTML-commentaar of
-# data-attribuut: Outlook laat die niet betrouwbaar staan.
+# B1 (10-9-2026): markering in de body waaraan de agenda-sync een
+# Energiemeneer-afspraak herkende. Sinds 1-10-2026 (Kevin) schrijft
+# ``opmaak_opname`` haar niet meer in de body: de afspraak wordt gedeeld en de
+# regel hoort daar niet. Herkenning loopt via het titelwoord uit het
+# productprofiel; de markering wordt alleen nog gelezen in oudere afspraken.
 OPNAME_MARKERING = "Energiemeneer-afspraak"
 _MARKERING_RE = re.compile(re.escape(OPNAME_MARKERING) + r"\s*:\s*([^\]<\n]+)", re.I)
 
@@ -68,13 +70,13 @@ def opmaak_opname(
         prijs: genegeerd (Kevin 23-9-2026): de prijs staat bewust NIET in de
             agenda-body, want afspraken worden doorgestuurd naar ZZP'ers.
             Parameter blijft voor bestaande aanroepers.
-        label: huidig energielabel; valt terug op ``adres["label"]``.
+        label: huidig energielabel; valt terug op ``adres["label"]`` en anders
+            op "nog niet geregistreerd".
         makelaar: naam van de makelaar; alleen getoond als ingevuld.
         product: productnaam uit de catalogus (B1). Bepaalt het woord in de
             titel via het profiel (``agenda_titel``: "Energielabel opname" voor
-            de woningproducten, "Energiescan VvE bezoek" voor de VvE-scan) en
-            staat in de markering in de body. Leeg = energielabel (byte-gelijk
-            met vóór B1).
+            de woningproducten, "Energiescan VvE bezoek" voor de VvE-scan).
+            Leeg = energielabel.
 
     Returns:
         Dict met ``onderwerp``, ``body_html``, ``locatie`` en
@@ -97,11 +99,11 @@ def opmaak_opname(
     klant_naam = _volledige_naam(klant)
     opp = adres.get("oppervlakte")
     opp_str = f" {opp}m²" if opp else ""
-    titel_woord, product_naam = _titel_en_product(product)
+    titel_woord = _titel_woord(product)
     onderwerp = f"{klant_naam}: {titel_woord}{opp_str} tussen {t1} en {t2} uur"
 
     locatie = _locatie(adres)
-    body_html = _body(klant, adres, woningtype, prijs, label, makelaar, klant_naam, product_naam)
+    body_html = _body(klant, adres, woningtype, prijs, label, makelaar, klant_naam)
 
     _log.info("Opname-opmaak gebouwd: %s", onderwerp)
     return {
@@ -112,20 +114,16 @@ def opmaak_opname(
     }
 
 
-def _titel_en_product(product: str) -> tuple[str, str]:
-    """(woord in de titel, productnaam voor de markering). Leeg of onbekend
-    product → het energielabel-woord en een lege productnaam, zodat de oude
-    afspraken byte-gelijk blijven."""
+def _titel_woord(product: str) -> str:
+    """Het woord in de titel. Leeg of onbekend product → het energielabel-woord."""
     from . import product as core_product   # lokaal: geen importkring bij laden
     p = core_product.vind(product)
-    if p is None:
-        return "Energielabel opname", ""
-    return p.agenda_titel, p.naam
+    return p.agenda_titel if p is not None else "Energielabel opname"
 
 
 def is_opname(onderwerp: str, body_html: str = "") -> bool:
-    """Herken een Energiemeneer-afspraak (B1): aan de markering in de body, of
-    (oude afspraken, vóór B1) aan "energielabel" én "opname" in de titel.
+    """Herken een Energiemeneer-afspraak: aan de markering in de body (afspraken
+    van vóór 1-10-2026), of aan "energielabel" én "opname" in de titel.
     Hoofdletter-ongevoelig."""
     if OPNAME_MARKERING.lower() in (body_html or "").lower():
         return True
@@ -135,7 +133,8 @@ def is_opname(onderwerp: str, body_html: str = "") -> bool:
 
 def product_uit_body(body_html: str) -> str:
     """De productnaam uit de markering in de body ("Energiemeneer-afspraak:
-    Energiescan VvE"), of leeg als die er niet in staat (oude afspraak)."""
+    Energiescan VvE"), of leeg als die er niet in staat (sinds 1-10-2026 schrijft
+    ``opmaak_opname`` de markering niet meer)."""
     m = _MARKERING_RE.search(html.unescape(body_html or ""))
     return m.group(1).strip() if m else ""
 
@@ -224,20 +223,15 @@ def _body(
     label: str,
     makelaar: str,
     klant_naam: str,
-    product_naam: str = "",
 ) -> str:
     email = (klant.get("email") or "").strip()
     telefoon = (klant.get("telefoon") or "").strip()
     opmerking = (klant.get("opmerkingen") or "").strip()
     bedrijf = klant.get("bedrijf")
 
-    straat = (adres.get("straatnaam") or "").strip()
-    huisn = _huisnummer_volledig(adres)
-    pc = (adres.get("postcode") or "").strip()
-    wp = (adres.get("woonplaats") or "").strip()
     bouwjaar = adres.get("bouwjaar") or "—"
     opp = adres.get("oppervlakte") or "—"
-    label_str = label or adres.get("label") or "onbekend"
+    label_str = label or adres.get("label") or "nog niet geregistreerd"
     woningtype_str = (woningtype or "—").capitalize()
 
     makelaar_blok = ""
@@ -257,11 +251,7 @@ def _body(
     if opmerking:
         opmerking_blok = f"<br><br><b>Opmerking:</b><br>{_e(opmerking)}"
 
-    # B1: de markering waaraan de agenda-sync deze afspraak herkent, met het
-    # product erachter; zonder product (oude aanroep) alleen de markering.
-    markering = OPNAME_MARKERING + (f": {_e(product_naam)}" if product_naam else "")
-    markering_blok = f'<br><br><span style="color:#888;font-size:9pt">[{markering}]</span>'
-
+    # Geen adresblok (Kevin 1-10-2026): het adres staat al in de locatie.
     return (
         "<html><body>\n"
         '<p style="font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.8">\n'
@@ -269,13 +259,10 @@ def _body(
         f'{_e(email) or "—"}<br>\n'
         f'{_e(telefoon) or "—"}<br>\n'
         "<br>\n"
-        f"<b>{_e(straat)} {_e(huisn)}</b><br>\n"
-        f"{_e(pc)} {_e(wp)}<br>\n"
-        "<br>\n"
         f"Bouwjaar: {_e(bouwjaar)} &nbsp;|&nbsp; Oppervlakte: {_e(opp)} m² "
         f"&nbsp;|&nbsp; Huidig label: <b>{_e(label_str)}</b><br>\n"
         f"Woningtype: {_e(woningtype_str)}"
-        f"{makelaar_blok}{bedrijf_blok}{opmerking_blok}{markering_blok}\n"
+        f"{makelaar_blok}{bedrijf_blok}{opmerking_blok}\n"
         "</p>\n"
         "</body></html>"
     )
