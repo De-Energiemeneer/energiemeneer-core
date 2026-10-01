@@ -206,7 +206,8 @@ def test_onleesbare_tijd_geeft_duidelijke_fout():
 def test_zonder_product_blijft_titel_en_markering_energielabel():
     r = agenda_format.opmaak_opname("2026-06-01T13:30:00Z", "2026-06-01T15:00:00Z", _klant(), _adres())
     assert r["onderwerp"] == "Jan Jansen: Energielabel opname 120m² tussen 15:30 en 17:00 uur"
-    assert "Energiemeneer-afspraak" not in r["body_html"]
+    # De markering staat helemaal onderaan, klein en lichtgrijs (Kevin 1-10-2026).
+    assert r["body_html"].endswith('color:#b5b5b5">[Energiemeneer-afspraak]</p>\n</body></html>')
     assert agenda_format.product_uit_body(r["body_html"]) == ""
 
 
@@ -222,7 +223,7 @@ def test_product_energielabel_is_byte_gelijk_aan_zonder_product():
     b = agenda_format.opmaak_opname("2026-06-01T13:30:00Z", "2026-06-01T15:00:00Z", _klant(), _adres(),
                                     product="Energielabel")
     assert a["onderwerp"] == b["onderwerp"] and a["locatie"] == b["locatie"]
-    assert b["body_html"] == a["body_html"]
+    assert b["body_html"].replace("[Energiemeneer-afspraak: Energielabel]", "[Energiemeneer-afspraak]") == a["body_html"]
 
 
 def test_vve_scan_titel_en_markering():
@@ -230,12 +231,9 @@ def test_vve_scan_titel_en_markering():
                                     {"straatnaam": "Sumatrastraat", "huisnummer": 200, "postcode": "2585CR",
                                      "woonplaats": "Den Haag"}, product="Energiescan VvE")
     assert r["onderwerp"] == "Jan Jansen: Energiescan VvE bezoek tussen 09:00 en 12:00 uur"
-    # Geen markering meer in de body (Kevin 1-10-2026); oude afspraken met de
-    # markering blijven leesbaar.
-    assert "Energiemeneer-afspraak" not in r["body_html"]
-    oud = "<p>[Energiemeneer-afspraak: Energiescan VvE]</p>"
-    assert agenda_format.product_uit_body(oud) == "Energiescan VvE"
-    assert agenda_format.is_opname(r["onderwerp"], oud)
+    assert r["body_html"].endswith("[Energiemeneer-afspraak: Energiescan VvE]</p>\n</body></html>")
+    assert agenda_format.product_uit_body(r["body_html"]) == "Energiescan VvE"
+    assert agenda_format.is_opname(r["onderwerp"], r["body_html"])
     assert not agenda_format.is_opname(r["onderwerp"])       # de core-titelregel alleen kent dit woord niet
 
 
@@ -250,4 +248,4 @@ def test_onbekend_product_valt_terug_op_energielabel_woord():
     r = agenda_format.opmaak_opname("2026-06-01T13:30:00Z", "2026-06-01T15:00:00Z", _klant(), _adres(),
                                     product="Iets nieuws")
     assert "Energielabel opname" in r["onderwerp"]
-    assert "Energiemeneer-afspraak" not in r["body_html"]
+    assert "[Energiemeneer-afspraak]" in r["body_html"]

@@ -34,10 +34,10 @@ DUUR_MINUTEN = 90
 HERINNERING_MINUTEN = 60
 
 # B1 (10-9-2026): markering in de body waaraan de agenda-sync een
-# Energiemeneer-afspraak herkende. Sinds 1-10-2026 (Kevin) schrijft
-# ``opmaak_opname`` haar niet meer in de body: de afspraak wordt gedeeld en de
-# regel hoort daar niet. Herkenning loopt via het titelwoord uit het
-# productprofiel; de markering wordt alleen nog gelezen in oudere afspraken.
+# Energiemeneer-afspraak en het product herkent. Zichtbare tekst, geen
+# HTML-commentaar of data-attribuut: Outlook laat die niet betrouwbaar staan.
+# Sinds 1-10-2026 (Kevin) staat ze helemaal onderaan in een eigen, kleine en
+# lichtgrijze alinea, zodat ze niet opvalt als de afspraak wordt gedeeld.
 OPNAME_MARKERING = "Energiemeneer-afspraak"
 _MARKERING_RE = re.compile(re.escape(OPNAME_MARKERING) + r"\s*:\s*([^\]<\n]+)", re.I)
 
@@ -79,8 +79,8 @@ def opmaak_opname(
         makelaar: naam van de makelaar; alleen getoond als ingevuld.
         product: productnaam uit de catalogus (B1). Bepaalt het woord in de
             titel via het profiel (``agenda_titel``: "Energielabel opname" voor
-            de woningproducten, "Energiescan VvE bezoek" voor de VvE-scan).
-            Leeg = energielabel.
+            de woningproducten, "Energiescan VvE bezoek" voor de VvE-scan) en
+            staat in de markering onderaan de body. Leeg = energielabel.
 
     Returns:
         Dict met ``onderwerp``, ``body_html``, ``locatie`` en
@@ -103,11 +103,11 @@ def opmaak_opname(
     klant_naam = _volledige_naam(klant)
     opp = adres.get("oppervlakte")
     opp_str = f" {opp}m²" if opp else ""
-    titel_woord = _titel_woord(product)
+    titel_woord, product_naam = _titel_en_product(product)
     onderwerp = f"{klant_naam}: {titel_woord}{opp_str} tussen {t1} en {t2} uur"
 
     locatie = _locatie(adres)
-    body_html = _body(klant, adres, woningtype, prijs, label, makelaar, klant_naam)
+    body_html = _body(klant, adres, woningtype, prijs, label, makelaar, klant_naam, product_naam)
 
     _log.info("Opname-opmaak gebouwd: %s", onderwerp)
     return {
@@ -118,16 +118,19 @@ def opmaak_opname(
     }
 
 
-def _titel_woord(product: str) -> str:
-    """Het woord in de titel. Leeg of onbekend product → het energielabel-woord."""
+def _titel_en_product(product: str) -> tuple[str, str]:
+    """(woord in de titel, productnaam voor de markering). Leeg of onbekend
+    product → het energielabel-woord en een lege productnaam."""
     from . import product as core_product   # lokaal: geen importkring bij laden
     p = core_product.vind(product)
-    return p.agenda_titel if p is not None else "Energielabel opname"
+    if p is None:
+        return "Energielabel opname", ""
+    return p.agenda_titel, p.naam
 
 
 def is_opname(onderwerp: str, body_html: str = "") -> bool:
-    """Herken een Energiemeneer-afspraak: aan de markering in de body (afspraken
-    van vóór 1-10-2026), of aan "energielabel" én "opname" in de titel.
+    """Herken een Energiemeneer-afspraak: aan de markering in de body, of aan
+    "energielabel" én "opname" in de titel.
     Hoofdletter-ongevoelig."""
     if OPNAME_MARKERING.lower() in (body_html or "").lower():
         return True
@@ -137,8 +140,7 @@ def is_opname(onderwerp: str, body_html: str = "") -> bool:
 
 def product_uit_body(body_html: str) -> str:
     """De productnaam uit de markering in de body ("Energiemeneer-afspraak:
-    Energiescan VvE"), of leeg als die er niet in staat (sinds 1-10-2026 schrijft
-    ``opmaak_opname`` de markering niet meer)."""
+    Energiescan VvE"), of leeg als die er niet in staat."""
     m = _MARKERING_RE.search(html.unescape(body_html or ""))
     return m.group(1).strip() if m else ""
 
@@ -227,6 +229,7 @@ def _body(
     label: str,
     makelaar: str,
     klant_naam: str,
+    product_naam: str = "",
 ) -> str:
     email = (klant.get("email") or "").strip()
     telefoon = (klant.get("telefoon") or "").strip()
@@ -273,6 +276,12 @@ def _body(
     if opmerking:
         opmerking_blok = f"<br><br><b>Opmerking:</b><br>{_e(opmerking)}"
 
+    # De markering waaraan de agenda-sync de afspraak en het product herkent:
+    # helemaal onderaan, klein en lichtgrijs (Kevin 1-10-2026).
+    markering = OPNAME_MARKERING + (f": {_e(product_naam)}" if product_naam else "")
+    markering_blok = ('<p style="font-family:Calibri,Arial,sans-serif;font-size:8pt;color:#b5b5b5">'
+                      f"[{markering}]</p>\n")
+
     # Geen adresblok (Kevin 1-10-2026): het adres staat al in de locatie.
     return (
         "<html><body>\n"
@@ -287,5 +296,6 @@ def _body(
         f"Woningtype: {_e(woningtype_str)}"
         f"{makelaar_blok}{bedrijf_blok}{opmerking_blok}\n"
         "</p>\n"
+        f"{markering_blok}"
         "</body></html>"
     )
