@@ -107,6 +107,28 @@ def test_makelaar_getoond_indien_ingevuld():
     assert "Makelaardij De Sleutel" in r["body_html"]
 
 
+def test_contact_afspraak_blok_boven_de_klant():
+    klant = _klant()
+    klant["contact_afspraak"] = {"naam": "Jack", "telefoon": "06 11 24 73 12",
+                                 "rol": "huurder", "email": "", "notitie": ""}
+    body = agenda_format.opmaak_opname(
+        "2026-06-01T13:30:00Z", "2026-06-01T15:00:00Z", klant, _adres())["body_html"]
+    assert "<b>Contact voor de afspraak:</b>" in body
+    assert "Jack (huurder)" in body and "06 11 24 73 12" in body
+    assert body.index("Contact voor de afspraak") < body.index(klant["email"])
+
+
+def test_contact_afspraak_weggelaten_indien_leeg():
+    klant = _klant()
+    klant["contact_afspraak"] = {"naam": "", "telefoon": ""}
+    r = agenda_format.opmaak_opname(
+        "2026-06-01T13:30:00Z", "2026-06-01T15:00:00Z", klant, _adres())
+    assert "Contact voor de afspraak" not in r["body_html"]
+    r = agenda_format.opmaak_opname(
+        "2026-06-01T13:30:00Z", "2026-06-01T15:00:00Z", _klant(), _adres())
+    assert "Contact voor de afspraak" not in r["body_html"]
+
+
 def test_makelaar_weggelaten_indien_leeg():
     r = agenda_format.opmaak_opname(
         "2026-06-01T13:30:00Z", "2026-06-01T15:00:00Z", _klant(), _adres())

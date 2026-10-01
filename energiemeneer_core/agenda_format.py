@@ -63,6 +63,10 @@ def opmaak_opname(
             omgerekend.
         klant: dict met ``voornaam``, ``achternaam``, ``email``, ``telefoon``,
             ``opmerkingen`` en optioneel ``bedrijf`` (``{naam, kvk, btw}``).
+            Optioneel ``contact_afspraak`` (``{naam, telefoon, email, rol,
+            notitie}``): wie de afspraak regelt en opendoet als dat iemand
+            anders is dan de klant (bijv. de huurder). Staat als eigen blok
+            bovenaan de body; alleen getoond bij een naam of telefoonnummer.
         adres: dict met ``straatnaam``, ``huisnummer``, ``huisletter``,
             ``toevoeging``, ``postcode``, ``woonplaats``, ``oppervlakte``,
             ``bouwjaar`` en optioneel ``label``.
@@ -247,6 +251,24 @@ def _body(
             regels.append("BTW: " + _e(bedrijf["btw"]))
         bedrijf_blok = "<br><br><b>— Zakelijk —</b><br>" + "<br>".join(regels)
 
+    # Contact voor de afspraak (Kevin 1-10-2026): de huurder/bewoner die opendoet,
+    # boven de klant zodat het nummer om te bellen als eerste in beeld staat.
+    contact_blok = ""
+    contact = klant.get("contact_afspraak")
+    if isinstance(contact, dict):
+        c_naam = (contact.get("naam") or "").strip()
+        c_tel = (contact.get("telefoon") or "").strip()
+        if c_naam or c_tel:
+            c_rol = (contact.get("rol") or "").strip()
+            kop = _e(c_naam or "—") + (f" ({_e(c_rol)})" if c_rol else "")
+            regels = [kop]
+            for extra in (c_tel, (contact.get("email") or "").strip(),
+                          (contact.get("notitie") or "").strip()):
+                if extra:
+                    regels.append(_e(extra))
+            contact_blok = ("<b>Contact voor de afspraak:</b><br>\n"
+                            + "<br>\n".join(regels) + "<br>\n<br>\n")
+
     opmerking_blok = ""
     if opmerking:
         opmerking_blok = f"<br><br><b>Opmerking:</b><br>{_e(opmerking)}"
@@ -255,6 +277,7 @@ def _body(
     return (
         "<html><body>\n"
         '<p style="font-family:Calibri,Arial,sans-serif;font-size:11pt;line-height:1.8">\n'
+        f"{contact_blok}"
         f"<b>{_e(klant_naam)}</b><br>\n"
         f'{_e(email) or "—"}<br>\n'
         f'{_e(telefoon) or "—"}<br>\n'
