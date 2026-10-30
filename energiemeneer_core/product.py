@@ -68,12 +68,14 @@ CATALOGUS: tuple[Product, ...] = (
             automaat=True, offerteregels="woning", bijlage_g=True,
             ob_sjabloon="opdrachtbevestiging_energielabel_advies", afspraak_vereist=True,
             facturatie="robot", dossiertype="particulier", boom="labels", koepel=True,
-            zelf_inplannen=True, duur_minuten=90, agenda_categorie="adviezen"),   # beslissing 22
+            zelf_inplannen=True, duur_minuten=90, agenda_categorie="adviezen",   # beslissing 22
+            agenda_titel="Energielabel advies"),                                # Kevin 30-10
     Product("Maatwerkadvies particulier", "maatwerkadvies", "Maatwerk part.", "particulier",
             automaat=True, offerteregels="woning", bijlage_g=True,     # Kevin 23-9
             ob_sjabloon="offerte_maatwerk_particulier", afspraak_vereist=True,
             facturatie="termijnen", dossiertype="particulier", boom="adviezen", koepel=True,
-            zelf_inplannen=True, duur_minuten=120, agenda_categorie="adviezen"),
+            zelf_inplannen=True, duur_minuten=120, agenda_categorie="adviezen",
+            agenda_titel="Maatwerkadvies woning"),                              # Kevin 30-10
     # B1 (10-9-2026, beslissingen 3, 4, 6, 7): de VvE-scan loopt door de automaat
     # met de VvE-prijstak (vast tarief vanaf 8 woonfuncties), eigen dossiertype,
     # map onder de VvE-basis, eindcontrole zonder woning-eisen maar mét het

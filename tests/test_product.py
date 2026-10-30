@@ -82,10 +82,16 @@ def test_b1_vve_profielvelden_en_agenda_titel():
     assert scan.afspraak_vereist and scan.zelf_inplannen and scan.duur_minuten == 180
     assert scan.agenda_titel == "Energiescan VvE bezoek"
     assert product.profiel("Maatwerkadvies VvE").agenda_titel == "Maatwerkadvies VvE bezoek"
-    for naam in ("Energielabel", "Herlabellen na advies", "Energielabel Advies",
-                 "Maatwerkadvies particulier", "Nog te bepalen"):
+    titels = {"Energielabel": "Energielabel opname", "Herlabellen na advies": "Energielabel opname",
+              "Energielabel Advies": "Energielabel advies",          # Kevin 30-10
+              "Maatwerkadvies particulier": "Maatwerkadvies woning",  # Kevin 30-10
+              "Nog te bepalen": "Energielabel opname"}
+    for naam, titel in titels.items():
         p = product.profiel(naam)
-        assert p.ob_automatisch and p.woning_eisen and p.agenda_titel == "Energielabel opname", naam
+        assert p.ob_automatisch and p.woning_eisen and p.agenda_titel == titel, naam
+    # Geen titel mag in een andere zitten: anders raadt de agenda-sync het verkeerde product.
+    alle = {q.agenda_titel.lower() for q in product.alle()}
+    assert not any(a != b and a in b for a in alle for b in alle)
     assert product.namen_met(woning_eisen=False) == ("Energiescan VvE", "Maatwerkadvies VvE")
 
 
