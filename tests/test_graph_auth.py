@@ -104,6 +104,7 @@ def test_invalid_grant_stuurt_precies_een_noodmelding(monkeypatch):
     calls = _vang_post(
         monkeypatch,
         _resp(status=400, json_data={"error": "invalid_grant"}),  # refresh (volle scope)
+        _resp(status=400, json_data={"error": "invalid_grant"}),  # vangnet zonder Calendars.Shared
         _resp(status=400, json_data={"error": "invalid_grant"}),  # basis-scope-vangnet
         _resp(status=200),  # ntfy
     )
@@ -123,6 +124,7 @@ def test_tweede_fout_binnen_24u_geen_tweede_melding(monkeypatch):
         monkeypatch,
         _resp(status=400, json_data={"error": "invalid_grant"}),
         _resp(status=400, json_data={"error": "invalid_grant"}),
+        _resp(status=400, json_data={"error": "invalid_grant"}),
         _resp(status=200),
     )
     with pytest.raises(RuntimeError):
@@ -131,6 +133,7 @@ def test_tweede_fout_binnen_24u_geen_tweede_melding(monkeypatch):
     # Tweede ronde: tel hoeveel ntfy-calls er nu nog bij komen.
     calls = _vang_post(
         monkeypatch,
+        _resp(status=400, json_data={"error": "invalid_grant"}),
         _resp(status=400, json_data={"error": "invalid_grant"}),
         _resp(status=400, json_data={"error": "invalid_grant"}),
         _resp(status=200),
@@ -226,22 +229,42 @@ def test_voltooi_device_login_echte_fout(monkeypatch):
 
 
 def test_scope_vangnet_valt_terug_op_basis(monkeypatch):
-    """Mail.ReadWrite nog niet toegekend in Entra → de verversing met de
-    uitgebreide scope wordt geweigerd, maar de basis-scope-retry slaagt:
+    """Mail.ReadWrite en Calendars.ReadWrite.Shared nog niet toegekend in Entra →
+    de twee uitgebreide sets worden geweigerd, maar de basis-scope-retry slaagt:
     de koppeling blijft werken, zonder noodmelding."""
     graph_auth._bewaar_refresh_token("RT-goed")
     calls = _vang_post(
         monkeypatch,
         _resp(status=400, json_data={"error": "invalid_grant",
                                      "error_description": "AADSTS65001 consent"}),
+        _resp(status=400, json_data={"error": "invalid_grant",
+                                     "error_description": "AADSTS65001 consent"}),
         _resp(status=200, json_data={"access_token": "AT-basis", "expires_in": 3600}),
     )
     token = graph_auth.haal_graph_token()
     assert token == "AT-basis"
-    # Eerste call vroeg de uitgebreide scope, het vangnet de basis-scopes.
     token_calls = [c for c in calls if "oauth2" in c["url"]]
-    assert len(token_calls) == 2
-    assert "Mail.ReadWrite" in token_calls[0]["data"]["scope"]
-    assert "Mail.ReadWrite" not in token_calls[1]["data"]["scope"]
+    assert len(token_calls) == 3
+    assert "Calendars.ReadWrite.Shared" in token_calls[0]["data"]["scope"]
+    assert "Mail.ReadWrite" in token_calls[1]["data"]["scope"]
+    assert "Calendars.ReadWrite.Shared" not in token_calls[1]["data"]["scope"]
+    assert "Mail.ReadWrite" not in token_calls[2]["data"]["scope"]
     # Geen noodmelding verstuurd.
     assert not [c for c in calls if "test-topic-xyz" in c["url"]]
+
+
+def test_scope_vangnet_houdt_mail_als_alleen_shared_ontbreekt(monkeypatch):
+    """0.33.0: alleen Calendars.ReadWrite.Shared ontbreekt → tweede trede slaagt,
+    Mail.ReadWrite blijft dus behouden."""
+    graph_auth._bewaar_refresh_token("RT-goed")
+    calls = _vang_post(
+        monkeypatch,
+        _resp(status=400, json_data={"error": "invalid_grant",
+                                     "error_description": "AADSTS65001 consent"}),
+        _resp(status=200, json_data={"access_token": "AT-mail", "expires_in": 3600}),
+    )
+    assert graph_auth.haal_graph_token() == "AT-mail"
+    token_calls = [c for c in calls if "oauth2" in c["url"]]
+    assert len(token_calls) == 2
+    assert "Mail.ReadWrite" in token_calls[1]["data"]["scope"]
+    assert "Calendars.ReadWrite.Shared" not in token_calls[1]["data"]["scope"]

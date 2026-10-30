@@ -194,3 +194,27 @@ def test_netwerkfout_geeft_nette_runtime_error(monkeypatch):
     monkeypatch.setattr(requests, "request", boom)
     with pytest.raises(RuntimeError, match="niet bereikbaar"):
         agenda.haal_agenda_op("2026-06-01T00:00:00", "2026-06-02T00:00:00")
+
+
+def test_mailbox_kiest_de_agenda_van_een_collega(monkeypatch):
+    """0.33.0: met mailbox= gaat elke actie naar /users/<adres>, zonder naar /me."""
+    calls = _vang_request(
+        monkeypatch,
+        _resp(status=201, json_data={"id": "EV1"}),
+        _resp(status=200, json_data={}),
+        _resp(status=204),
+        _resp(status=200, json_data={"value": []}),
+        _resp(status=201, json_data={"id": "EV2"}),
+    )
+    mb = "berend@de-energiemeneer.nl"
+    agenda.maak_afspraak("2026-11-06T08:00:00Z", "2026-11-06T09:00:00Z", "Opname", mailbox=mb)
+    agenda.wijzig_afspraak("EV1", onderwerp="Opname 2", mailbox=mb)
+    agenda.annuleer_afspraak("EV1", mailbox=mb)
+    agenda.haal_agenda_op("2026-11-06T00:00:00Z", "2026-11-07T00:00:00Z", mailbox=mb)
+    agenda.maak_afspraak("2026-11-06T08:00:00Z", "2026-11-06T09:00:00Z", "Opname")
+    urls = [c["url"] for c in calls]
+    assert urls[0].endswith("/users/berend@de-energiemeneer.nl/events")
+    assert urls[1].endswith("/users/berend@de-energiemeneer.nl/events/EV1")
+    assert urls[2].endswith("/users/berend@de-energiemeneer.nl/events/EV1")
+    assert "/users/berend@de-energiemeneer.nl/calendarView" in urls[3]
+    assert urls[4].endswith("/me/events")                      # zonder mailbox: zoals altijd

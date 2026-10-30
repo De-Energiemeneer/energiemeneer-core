@@ -63,7 +63,13 @@ _SCOPE_BASIS = (
     "Files.ReadWrite Tasks.ReadWrite Notes.ReadWrite "
     "Calendars.ReadWrite Mail.Send offline_access"
 )
-_SCOPE = _SCOPE_BASIS + " Mail.ReadWrite"
+_SCOPE_MAIL = _SCOPE_BASIS + " Mail.ReadWrite"
+# Calendars.ReadWrite.Shared (0.33.0): afspraken in de gedeelde agenda van een
+# collega (ZZP'er) zetten, verzetten en verwijderen (graph_api.agenda, mailbox=).
+# Zelfde vangnet: ontbreekt de toestemming, dan eerst terug naar _SCOPE_MAIL,
+# zodat mail-archiveren niet stilvalt, en pas daarna naar de basis.
+_SCOPE = _SCOPE_MAIL + " Calendars.ReadWrite.Shared"
+_SCOPE_TREDEN = (_SCOPE, _SCOPE_MAIL, _SCOPE_BASIS)
 
 # Bestanden in de datamap (via Module 1 storage).
 _TOKEN_BESTAND = "token_persist.json"
@@ -277,23 +283,25 @@ def _ververs_access_token(refresh_token: str) -> str:
         )
 
     try:
-        r = _post(_SCOPE)
-        if r.status_code != 200:
+        # Vangnet in treden: een extra scope (Calendars.ReadWrite.Shared,
+        # Mail.ReadWrite) is mogelijk nog niet toegekend in Entra. Dan de
+        # volgende, kleinere set — de koppeling blijft gewoon werken; alleen
+        # dat ene onderdeel wacht op de consent. Faalt de basis óók, dan is de
+        # refresh-token zelf het probleem en volgt het bestaande alarmpad.
+        for i, scope in enumerate(_SCOPE_TREDEN):
+            r = _post(scope)
+            if r.status_code == 200 or i == len(_SCOPE_TREDEN) - 1:
+                break
             try:
                 fout_vol = r.json().get("error", "")
             except ValueError:
                 fout_vol = ""
-            if fout_vol in ("invalid_grant", "interaction_required", "invalid_scope"):
-                # Vangnet: de extra scope (Mail.ReadWrite) is mogelijk nog niet
-                # toegekend in Entra. Probeer de basis-scopes — de koppeling
-                # blijft dan gewoon werken; alleen het mail-verplaatsen wacht
-                # op de consent. Faalt de basis óók, dan is de refresh-token
-                # zelf het probleem en volgt het bestaande alarmpad.
-                _log.warning(
-                    "Token verversen met uitgebreide scope geweigerd (%s) — "
-                    "terugval op basis-scopes; ken Mail.ReadWrite toe in Entra "
-                    "voor het archiveren van mail", fout_vol)
-                r = _post(_SCOPE_BASIS)
+            if fout_vol not in ("invalid_grant", "interaction_required", "invalid_scope"):
+                break
+            _log.warning(
+                "Token verversen met scope-set %d geweigerd (%s) — terugval op een "
+                "kleinere set; ken Calendars.ReadWrite.Shared / Mail.ReadWrite toe "
+                "in Entra", i + 1, fout_vol)
     except requests.RequestException as e:
         # Tijdelijk netwerkprobleem — geen alarm, gewoon later opnieuw.
         raise RuntimeError(f"Microsoft niet bereikbaar bij verversen: {e}") from e

@@ -16,13 +16,23 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import quote
 
 from energiemeneer_core.graph_api import _client
 
 _log = logging.getLogger(__name__)
 
 
-def haal_agenda_op(start_iso: str, eind_iso: str) -> list[dict[str, Any]]:
+def _basis(mailbox: str | None) -> str:
+    """Pad naar de agenda: ``/me`` (de ingelogde mailbox, standaard) of
+    ``/users/<adres>`` voor een gedeelde agenda van een collega (0.33.0). Voor
+    een andere mailbox moet die agenda met bewerkrechten gedeeld zijn en is het
+    gedelegeerde recht ``Calendars.ReadWrite.Shared`` nodig."""
+    mb = (mailbox or "").strip()
+    return f"/users/{quote(mb, safe='@.')}" if mb else "/me"
+
+
+def haal_agenda_op(start_iso: str, eind_iso: str, mailbox: str | None = None) -> list[dict[str, Any]]:
     """Geef alle afspraken in een periode terug.
 
     Args:
@@ -44,7 +54,7 @@ def haal_agenda_op(start_iso: str, eind_iso: str) -> list[dict[str, Any]]:
     if not start_iso or not eind_iso:
         raise ValueError("start_iso en eind_iso zijn verplicht")
 
-    pad = "/me/calendarView"
+    pad = f"{_basis(mailbox)}/calendarView"
     params = {
         "startDateTime": start_iso,
         "endDateTime": eind_iso,
@@ -95,8 +105,9 @@ def maak_afspraak(
     body_html: str = "",
     locatie: str = "",
     herinner_minuten: int = 60,
+    mailbox: str | None = None,
 ) -> dict[str, Any]:
-    """Maak een Outlook-afspraak aan.
+    """Maak een Outlook-afspraak aan (``mailbox``: in de agenda van een collega).
 
     Args:
         start_iso, eind_iso: begin/eind als ISO-tijd (UTC).
@@ -119,7 +130,7 @@ def maak_afspraak(
 
     payload = _bouw_payload(start_iso, eind_iso, onderwerp, body_html, locatie,
                             herinner_minuten)
-    resp = _client.post("/me/events", json=payload)
+    resp = _client.post(f"{_basis(mailbox)}/events", json=payload)
     if resp.status_code not in (200, 201):
         raise RuntimeError(
             f"Afspraak aanmaken mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
@@ -137,8 +148,10 @@ def wijzig_afspraak(
     body_html: str | None = None,
     locatie: str | None = None,
     herinner_minuten: int | None = None,
+    mailbox: str | None = None,
 ) -> dict[str, Any]:
     """Wijzig een bestaande afspraak. Alleen meegegeven velden worden aangepast.
+    ``mailbox``: de agenda waarin de afspraak staat (standaard de eigen).
 
     Args:
         event_id: id van de bestaande afspraak.
@@ -172,7 +185,7 @@ def wijzig_afspraak(
     if not payload:
         raise ValueError("Niets om te wijzigen: geef minstens één veld mee")
 
-    resp = _client.patch(f"/me/events/{event_id}", json=payload)
+    resp = _client.patch(f"{_basis(mailbox)}/events/{event_id}", json=payload)
     if resp.status_code not in (200, 201):
         raise RuntimeError(
             f"Afspraak wijzigen mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
@@ -182,8 +195,8 @@ def wijzig_afspraak(
         "onderwerp": onderwerp, "locatie": locatie}.items() if v is not None}}
 
 
-def annuleer_afspraak(event_id: str) -> bool:
-    """Verwijder een afspraak uit Outlook.
+def annuleer_afspraak(event_id: str, mailbox: str | None = None) -> bool:
+    """Verwijder een afspraak uit Outlook (``mailbox``: de agenda waarin hij staat).
 
     Een afspraak die al weg is (``404``) telt ook als gelukt.
 
@@ -194,7 +207,7 @@ def annuleer_afspraak(event_id: str) -> bool:
     if not event_id:
         raise ValueError("event_id is verplicht")
 
-    resp = _client.delete(f"/me/events/{event_id}")
+    resp = _client.delete(f"{_basis(mailbox)}/events/{event_id}")
     if resp.status_code not in (200, 202, 204, 404):
         raise RuntimeError(
             f"Afspraak annuleren mislukt (HTTP {resp.status_code}): {resp.text[:300]}"
